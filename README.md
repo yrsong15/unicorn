@@ -2,7 +2,7 @@
 
 Named after the unicorn in the logo of the Boston Athletic Association (B.A.A.), which organizes the Boston Marathon.
 
-**Live app:** https://unicorn-taupe-nu.vercel.app
+**Live app:** https://yrsunicorn.vercel.app
 
 Unicorn is a personal running tracker that pulls runs and fitness data from Garmin Connect. It has:
 
