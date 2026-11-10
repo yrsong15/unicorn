@@ -7,6 +7,7 @@ Named after the unicorn in the logo of the Boston Athletic Association (B.A.A.),
 Unicorn is a personal running tracker that pulls runs and fitness data from Garmin Connect. It has:
 
 - **Weekly mileage:** Monday–Sunday weeks over 3M / 6M / 1Y / YTD / All.
+- **Rides:** bike rides are imported too and can be counted toward weekly mileage as run-equivalent miles.
 - **Shoe mileage:** one run can be split across several shoes (e.g. warmup in one, track reps in another).
 - **Fitness trends:** VO2 max, race predictions, resting HR, lactate threshold.
 - **Training load and readiness:** acute/chronic load, ACWR, readiness, HRV, training status.
@@ -98,6 +99,10 @@ cd backend && uv run pytest
    - Deploy.
 5. **Test a server-side sync:** open the deployed app and click **Sync now**. This confirms Garmin accepts requests from Vercel.
 
+## Workflow
+
+Changes that come from the repo owner (Young Re Song) can always be committed and pushed straight to `main`. No branch or pull request is needed. Vercel deploys every push to `main` to production.
+
 ## Data notes
 
 - **Week boundaries:** weeks use each run's local start time, so a Sunday-night run counts toward that week.
@@ -105,4 +110,8 @@ cd backend && uv run pytest
   - New runs automatically get the default shoe for their run type (road / treadmill / track / trail), or the overall default.
   - A split can't add up to more than the run's distance.
   - Any shortfall shows as "unassigned."
+- **Rides:** road, indoor, mountain and gravel rides are imported alongside runs and listed on the Runs page under the **Rides** filter. Rides never have shoes.
+  - Weekly mileage is running miles only, unless you turn on **Include bikes as run-equivalent** on the Dashboard.
+  - A ride's run-equivalent miles are its Garmin training load divided by your average training load per running mile over the last year.
+  - A ride with no training load adds nothing.
 - **Rate limits:** Garmin's endpoints are undocumented. The sync parses responses defensively and stops as soon as it gets a 429 (rate limit).

@@ -1,32 +1,39 @@
-# React + TypeScript + Vite
+# Unicorn frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+The web app for [Unicorn](../README.md): React 19, TypeScript, Vite, Tailwind CSS 4, Recharts, React Router and TanStack Query.
 
-Currently, two official plugins are available:
+## Run it
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+You need Node 20.19+ or 22.12+.
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+This serves the app at http://localhost:5173 and proxies `/api` to the backend at `http://127.0.0.1:8000`, so start the backend first (see the [main README](../README.md#local-development)). To point at a backend on another port, set `API_PROXY`, e.g. `API_PROXY=http://127.0.0.1:8001 npm run dev`.
+
+## Scripts
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Dev server with hot reload |
+| `npm run build` | Type-check (`tsc -b`), then build to `dist/` |
+| `npm run lint` | Lint with Oxlint |
+| `npm run preview` | Serve the production build locally |
+
+## Layout
+
+```
+src/
+  main.tsx        entry point: theme, query client
+  App.tsx         routes
+  api/            fetch client, TanStack Query hooks, response types
+  components/     layout, charts, run list, shoe split editor, shared UI
+  lib/format.ts   formatting helpers and saved preferences
+  pages/          Dashboard, Runs, RunDetail, Shoes, Fitness, Training, Records, Settings, Login
+```
+
+## Deployment
+
+Vercel builds this folder as the `frontend` service defined in the root [`vercel.json`](../vercel.json). Every path that isn't `/api/*` is served `index.html`, so client-side routes work on reload.
