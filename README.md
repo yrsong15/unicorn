@@ -33,8 +33,13 @@ Then open http://localhost:5173.
 
 ## How Garmin access works
 
-Garmin's official developer program is business-only, so this app uses the unofficial
+This app uses the unofficial
 [`python-garminconnect`](https://github.com/cyberjunky/python-garminconnect) library.
+Garmin's business developer program isn't open to individuals, and its official
+[Personal API](https://developer.garmin.com/gc-developer-program/personal/personal-api)
+doesn't expose VO2max, training status, readiness, race predictions, lactate threshold
+or personal records (checked 2026-11-09). See
+[GARMIN_PERSONAL_API_SWITCH.md](GARMIN_PERSONAL_API_SWITCH.md) for what a switch would take.
 
 - **Login stays on your Mac.** Your Garmin password and MFA code are only ever typed on your Mac (`cli login`). The resulting OAuth tokens are encrypted (`GARMIN_TOKEN_KEY`) and stored in the database.
 - **The server only uses tokens.** The deployed app restores the session from those tokens and refreshes them. It never has your password.
