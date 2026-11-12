@@ -55,7 +55,7 @@ or personal records (checked 2026-11-09). See
 
 ## Local development
 
-You need `uv` (`brew install uv`) and Node 20+.
+You need `uv` (`brew install uv`) and Node 22.12 or later. Vercel runs Node 24.
 
 ```bash
 cd backend

@@ -4,7 +4,7 @@ The web app for [Unicorn](../README.md): React 19, TypeScript, Vite, Tailwind CS
 
 ## Run it
 
-You need Node 20.19+ or 22.12+.
+You need Node 22.12 or later (Vite 8's minimum; Node 20 is end-of-life on Vercel). Vercel builds with Node 24.
 
 ```bash
 npm install
