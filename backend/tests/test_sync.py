@@ -59,8 +59,10 @@ class FakeGarmin:
         return load("personal_records.json")
 
 
-def _fast(monkeypatch):
+def _fast(monkeypatch, today=None):
     monkeypatch.setattr("app.garmin.sync.REQUEST_DELAY_S", 0)
+    if today:
+        monkeypatch.setattr("app.garmin.sync.local_today", lambda session: today)
 
 
 def test_parse_activity_maps_runs_and_rides():
@@ -139,3 +141,88 @@ def test_sync_status_endpoint_reports_not_connected(logged_in):
     assert "cli login" in res.json()["detail"]
     status = logged_in.get("/api/sync/status").json()
     assert status["garmin"]["status"] == "disconnected"
+
+
+class FlakyGarmin(FakeGarmin):
+    """FakeGarmin whose per-day HRV endpoint fails with a given error."""
+
+    def __init__(self, error):
+        super().__init__()
+        self.error = error
+
+    def get_hrv_data(self, day):
+        raise self.error
+
+
+def test_failed_requests_are_reported_not_hidden(session, monkeypatch):
+    from garminconnect import GarminConnectConnectionError
+
+    from app.garmin.sync import get_state
+
+    _fast(monkeypatch, today=date(2026, 10, 15))
+    result = run_sync(session, FlakyGarmin(GarminConnectConnectionError("500 server error")),
+                      activities_since=date(2026, 10, 13), metrics_since=date(2026, 10, 14))
+    assert result["failed_requests"] == 2  # two days of HRV
+    assert "2 Garmin requests failed" in result["message"]
+    assert get_state(session).status == "partial"
+
+
+def test_not_found_is_not_a_failure(session, monkeypatch):
+    from garminconnect import GarminConnectNotFoundError
+
+    _fast(monkeypatch, today=date(2026, 10, 15))
+    result = run_sync(session, FlakyGarmin(GarminConnectNotFoundError("404")),
+                      activities_since=date(2026, 10, 13), metrics_since=date(2026, 10, 14))
+    assert result["failed_requests"] == 0
+
+
+def test_too_many_failures_stop_the_sync(session, monkeypatch):
+    from garminconnect import GarminConnectConnectionError
+
+    from app.garmin.sync import SyncFailed, get_state
+
+    _fast(monkeypatch)
+    monkeypatch.setattr("app.garmin.sync.MAX_FAILED_REQUESTS", 3)
+    with pytest.raises(SyncFailed):
+        run_sync(session, FlakyGarmin(GarminConnectConnectionError("500")),
+                 activities_since=date(2026, 10, 13), metrics_since=date(2026, 10, 10))
+    assert get_state(session).status == "error"
+
+
+def test_activity_list_failure_fails_the_sync(session, monkeypatch):
+    from garminconnect import GarminConnectConnectionError
+
+    from app.garmin.sync import SyncFailed, get_state
+
+    class NoActivities(FakeGarmin):
+        def get_activities_by_date(self, start, end):
+            raise GarminConnectConnectionError("503")
+
+    _fast(monkeypatch)
+    with pytest.raises(SyncFailed):
+        run_sync(session, NoActivities(), activities_since=date(2026, 10, 13), metrics_since=date(2026, 10, 15))
+    state = get_state(session)
+    assert state.status == "error" and "get_activities_by_date" in state.message
+
+
+def test_expired_login_mid_sync_asks_to_reconnect(session, monkeypatch):
+    from garminconnect import GarminConnectAuthenticationError
+
+    from app.garmin.client import GarminNotConnected, get_auth
+
+    _fast(monkeypatch)
+    with pytest.raises(GarminNotConnected):
+        run_sync(session, FlakyGarmin(GarminConnectAuthenticationError("401")),
+                 activities_since=date(2026, 10, 13), metrics_since=date(2026, 10, 15))
+    assert get_auth(session).status == "needs_reconnect"
+
+
+def test_unreachable_garmin_returns_502(logged_in, monkeypatch):
+    from garminconnect import GarminConnectConnectionError
+
+    def unreachable(session):
+        raise GarminConnectConnectionError("connection reset")
+
+    monkeypatch.setattr("app.routers.sync.restore_client", unreachable)
+    res = logged_in.post("/api/sync")
+    assert res.status_code == 502 and "Couldn't reach Garmin" in res.json()["detail"]

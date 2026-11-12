@@ -30,7 +30,7 @@ class SyncState(SQLModel, table=True):
     started_at: NaiveDatetime | None = Field(default=None, sa_column=Column(DateTime(timezone=False), nullable=True))
     last_activity_start: NaiveDatetime | None = Field(default=None, sa_column=Column(DateTime(timezone=False), nullable=True))
     last_metrics_date: date | None = None
-    status: str = "idle"  # idle | running | ok | error
+    status: str = "idle"  # idle | running | ok | partial | error
     message: str | None = None
 
 

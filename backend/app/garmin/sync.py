@@ -5,12 +5,18 @@ import time
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
 
-from garminconnect import Garmin, GarminConnectTooManyRequestsError
+from garminconnect import (
+    Garmin,
+    GarminConnectAuthenticationError,
+    GarminConnectNotFoundError,
+    GarminConnectTooManyRequestsError,
+)
 from sqlmodel import Session, delete, select
 
 from app.clock import local_today
 from app.config import SYNC_STALE_AFTER_S
 from app.garmin import parse
+from app.garmin.client import GarminNotConnected, mark_needs_reconnect
 from app.models import DailyMetrics, Lap, PersonalRecord, Run, SyncState, utcnow
 from app.services.shoes import apply_default_shoe
 
@@ -21,10 +27,16 @@ log = logging.getLogger(__name__)
 ACTIVITY_OVERLAP = timedelta(days=2)
 FIRST_SYNC_LOOKBACK = timedelta(days=30)
 REQUEST_DELAY_S = 0.3
+# A sync with this many failed requests gives up instead of reporting success.
+MAX_FAILED_REQUESTS = 15
 
 
 class SyncBusy(RuntimeError):
     pass
+
+
+class SyncFailed(RuntimeError):
+    """Garmin kept failing (not rate limits or an expired login, which have their own errors)."""
 
 
 def get_state(session: Session) -> SyncState:
@@ -53,19 +65,39 @@ def _claim(session: Session) -> SyncState:
     return state
 
 
-def _call(fn: Callable, *args, **kwargs):
-    """One Garmin request. Non-fatal failures return None; 429s stop the sync."""
-    time.sleep(REQUEST_DELAY_S)
-    try:
-        return fn(*args, **kwargs)
-    except GarminConnectTooManyRequestsError:
-        raise
-    except Exception as exc:  # Garmin returns odd 4xx/5xx for days without data
-        log.info("Garmin call %s%s failed: %s", getattr(fn, "__name__", fn), args, exc)
-        return None
+class Requests:
+    """Makes the Garmin requests for one sync and counts the ones that failed.
+
+    A 404 means "no data for that day" and isn't a failure. Rate limits and an
+    expired login stop the sync. Other errors are counted and skipped, unless
+    the request is `required` or too many have failed.
+    """
+
+    def __init__(self) -> None:
+        self.failed = 0
+        self.last_error: str | None = None
+
+    def __call__(self, fn: Callable, *args, required: bool = False, **kwargs):
+        time.sleep(REQUEST_DELAY_S)
+        try:
+            return fn(*args, **kwargs)
+        except (GarminConnectTooManyRequestsError, GarminConnectAuthenticationError):
+            raise
+        except GarminConnectNotFoundError:
+            return None
+        except Exception as exc:
+            name = getattr(fn, "__name__", fn)
+            if required:
+                raise SyncFailed(f"Garmin request {name} failed: {exc}") from exc
+            log.info("Garmin call %s%s failed: %s", name, args, exc)
+            self.failed += 1
+            self.last_error = f"{name}: {exc}"
+            if self.failed >= MAX_FAILED_REQUESTS:
+                raise SyncFailed(f"{self.failed} Garmin requests failed; last was {self.last_error}") from exc
+            return None
 
 
-def upsert_run(session: Session, garmin: Garmin | None, activity: dict) -> Run | None:
+def upsert_run(session: Session, garmin: Garmin | None, activity: dict, call: Requests | None = None) -> Run | None:
     fields = parse.parse_activity(activity)
     if fields is None:
         return None
@@ -80,7 +112,8 @@ def upsert_run(session: Session, garmin: Garmin | None, activity: dict) -> Run |
     session.flush()
 
     if is_new:
-        laps = parse.parse_laps(_call(garmin.get_activity_splits, run.garmin_activity_id)) if garmin else []
+        call = call or Requests()
+        laps = parse.parse_laps(call(garmin.get_activity_splits, run.garmin_activity_id)) if garmin else []
         session.exec(delete(Lap).where(Lap.run_id == run.id))
         for lap in laps:
             session.add(Lap(run_id=run.id, **lap))
@@ -88,13 +121,13 @@ def upsert_run(session: Session, garmin: Garmin | None, activity: dict) -> Run |
     return run
 
 
-def sync_activities(session: Session, garmin: Garmin, start: date, end: date) -> dict[str, int]:
+def sync_activities(session: Session, garmin: Garmin, start: date, end: date, call: Requests) -> dict[str, int]:
     """Upsert runs and rides; returns how many of each were seen."""
-    activities = _call(garmin.get_activities_by_date, start.isoformat(), end.isoformat()) or []
+    activities = call(garmin.get_activities_by_date, start.isoformat(), end.isoformat(), required=True) or []
     counts = {"run": 0, "ride": 0}
     latest: datetime | None = None
     for activity in activities:
-        run = upsert_run(session, garmin, activity)
+        run = upsert_run(session, garmin, activity, call)
         if run is not None:
             counts[run.sport] += 1
             latest = max(latest or run.start_local, run.start_local)
@@ -117,15 +150,15 @@ def _apply(row: DailyMetrics, values: dict) -> None:
             setattr(row, key, value)
 
 
-def sync_metrics(session: Session, garmin: Garmin, start: date, end: date) -> int:
+def sync_metrics(session: Session, garmin: Garmin, start: date, end: date, call: Requests) -> int:
     # Range endpoints first (one request each), then per-day endpoints.
-    vo2 = parse.parse_vo2max_range(_call(garmin.get_max_metrics_range, start.isoformat(), end.isoformat()))
+    vo2 = parse.parse_vo2max_range(call(garmin.get_max_metrics_range, start.isoformat(), end.isoformat()))
     races: dict[date, dict] = {}
     chunk_start = start
     while chunk_start <= end:
         chunk_end = min(end, chunk_start + timedelta(days=365))
         races |= parse.parse_race_predictions(
-            _call(garmin.get_race_predictions, chunk_start.isoformat(), chunk_end.isoformat(), "daily")
+            call(garmin.get_race_predictions, chunk_start.isoformat(), chunk_end.isoformat(), "daily")
         )
         chunk_start = chunk_end + timedelta(days=1)
 
@@ -136,16 +169,16 @@ def sync_metrics(session: Session, garmin: Garmin, start: date, end: date) -> in
         row = _metrics_row(session, day)
         _apply(row, {"vo2max": vo2.get(day)})
         _apply(row, races.get(day, {}))
-        _apply(row, parse.parse_resting_hr(_call(garmin.get_user_summary, iso)))
-        _apply(row, parse.parse_readiness(_call(garmin.get_training_readiness, iso)))
-        _apply(row, parse.parse_hrv(_call(garmin.get_hrv_data, iso)))
-        _apply(row, parse.parse_training_status(_call(garmin.get_training_status, iso)))
+        _apply(row, parse.parse_resting_hr(call(garmin.get_user_summary, iso)))
+        _apply(row, parse.parse_readiness(call(garmin.get_training_readiness, iso)))
+        _apply(row, parse.parse_hrv(call(garmin.get_hrv_data, iso)))
+        _apply(row, parse.parse_training_status(call(garmin.get_training_status, iso)))
         session.add(row)
         session.commit()
         days += 1
         day += timedelta(days=1)
 
-    lt = parse.parse_lactate_threshold(_call(garmin.get_lactate_threshold, latest=True))
+    lt = parse.parse_lactate_threshold(call(garmin.get_lactate_threshold, latest=True))
     if any(v is not None for v in lt.values()):
         row = _metrics_row(session, end)
         _apply(row, lt)
@@ -159,8 +192,8 @@ def sync_metrics(session: Session, garmin: Garmin, start: date, end: date) -> in
     return days
 
 
-def sync_personal_records(session: Session, garmin: Garmin) -> None:
-    records = parse.parse_personal_records(_call(garmin.get_personal_record))
+def sync_personal_records(session: Session, garmin: Garmin, call: Requests) -> None:
+    records = parse.parse_personal_records(call(garmin.get_personal_record))
     for record in records:
         session.merge(PersonalRecord(**record))
     session.commit()
@@ -188,9 +221,14 @@ def run_sync(
                 if state.last_metrics_date
                 else today - FIRST_SYNC_LOOKBACK
             )
-        counts = sync_activities(session, garmin, activities_since, today)
-        days = sync_metrics(session, garmin, metrics_since, today)
-        sync_personal_records(session, garmin)
+        call = Requests()
+        counts = sync_activities(session, garmin, activities_since, today, call)
+        days = sync_metrics(session, garmin, metrics_since, today, call)
+        sync_personal_records(session, garmin, call)
+    except GarminConnectAuthenticationError as exc:
+        _finish(session, "error", "Garmin rejected the stored login. Run `cli login` on your Mac to reconnect.")
+        mark_needs_reconnect(session, f"Garmin rejected the stored tokens during sync: {exc}")
+        raise GarminNotConnected("Garmin tokens expired. Run `cli login` on your Mac to reconnect.") from exc
     except GarminConnectTooManyRequestsError:
         _finish(session, "error", "Garmin is rate-limiting requests. The next sync will pick up where this left off.")
         raise
@@ -200,8 +238,11 @@ def run_sync(
     runs, rides = counts["run"], counts["ride"]
     rides_part = f", {rides} ride{'s' if rides != 1 else ''}" if rides else ""
     message = f"Synced {runs} run{'s' if runs != 1 else ''}{rides_part} and {days} day{'s' if days != 1 else ''} of metrics"
-    _finish(session, "ok", message)
-    return {"runs": runs, "rides": rides, "metric_days": days, "message": message}
+    if call.failed:
+        message += f", but {call.failed} Garmin request{'s' if call.failed != 1 else ''} failed (last: {call.last_error})"
+    message = message[:500]
+    _finish(session, "partial" if call.failed else "ok", message)
+    return {"runs": runs, "rides": rides, "metric_days": days, "failed_requests": call.failed, "message": message}
 
 
 def _finish(session: Session, status: str, message: str) -> None:

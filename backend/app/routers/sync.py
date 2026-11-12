@@ -1,13 +1,13 @@
 import hmac
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from garminconnect import GarminConnectTooManyRequestsError
+from garminconnect import GarminConnectConnectionError, GarminConnectTooManyRequestsError
 from sqlmodel import Session
 
 from app.config import CRON_SECRET
 from app.db import get_session
 from app.garmin.client import GarminNotConnected, get_auth, restore_client
-from app.garmin.sync import SyncBusy, get_state, is_stale, run_sync
+from app.garmin.sync import SyncBusy, SyncFailed, get_state, is_stale, run_sync
 
 router = APIRouter(tags=["sync"])
 
@@ -34,6 +34,10 @@ def _sync(session: Session) -> dict:
         return {"skipped": True, "reason": str(exc), **_status(session)}
     except GarminConnectTooManyRequestsError as exc:
         raise HTTPException(429, "Garmin is rate-limiting requests; try again later") from exc
+    except SyncFailed as exc:
+        raise HTTPException(502, str(exc)[:300]) from exc
+    except GarminConnectConnectionError as exc:
+        raise HTTPException(502, f"Couldn't reach Garmin: {exc}"[:300]) from exc
     return {"skipped": False, **result, **_status(session)}
 
 

@@ -28,17 +28,24 @@ export function SyncControl() {
   }, [status.data, sync])
 
   const garmin = status.data?.garmin.status
+  const lastSync = status.data?.status
+  const when = relativeTime(status.data?.last_sync_at ?? null)
   const label = sync.isPending
     ? 'Syncing…'
     : garmin === 'needs_reconnect'
       ? 'Reconnect Garmin'
       : garmin === 'disconnected'
         ? 'Garmin not connected'
-        : `Synced ${relativeTime(status.data?.last_sync_at ?? null)}`
+        : lastSync === 'error'
+          ? `Sync failed ${when}`
+          : lastSync === 'partial'
+            ? `Synced ${when}, incomplete`
+            : `Synced ${when}`
+  const warn = (garmin && garmin !== 'ok') || lastSync === 'error' || lastSync === 'partial'
 
   return (
     <div className="flex items-center gap-2 text-xs text-nav-ink/80">
-      <span className={garmin && garmin !== 'ok' ? 'font-medium text-[#f6c37a]' : ''} title={status.data?.message ?? ''}>
+      <span className={warn ? 'font-medium text-[#f6c37a]' : ''} title={status.data?.message ?? ''}>
         {label}
       </span>
       <button

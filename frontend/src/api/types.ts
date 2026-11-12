@@ -118,7 +118,7 @@ export interface Dashboard {
 export interface SyncStatus {
   garmin: { status: 'disconnected' | 'ok' | 'needs_reconnect'; last_error: string | null; updated_at: string }
   last_sync_at: string | null
-  status: string
+  status: 'idle' | 'running' | 'ok' | 'partial' | 'error'
   message: string | null
   last_activity_start: string | null
   stale: boolean
