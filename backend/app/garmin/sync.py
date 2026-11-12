@@ -11,6 +11,8 @@ from garminconnect import (
     GarminConnectNotFoundError,
     GarminConnectTooManyRequestsError,
 )
+from sqlalchemy import or_, update
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, delete, select
 
 from app.clock import local_today
@@ -29,6 +31,10 @@ FIRST_SYNC_LOOKBACK = timedelta(days=30)
 REQUEST_DELAY_S = 0.3
 # A sync with this many failed requests gives up instead of reporting success.
 MAX_FAILED_REQUESTS = 15
+# A running sync refreshes its lock at least this often; a lock older than
+# LOCK_STALE_AFTER belongs to a sync that died and can be taken over.
+HEARTBEAT_EVERY = timedelta(seconds=30)
+LOCK_STALE_AFTER = timedelta(minutes=5)
 
 
 class SyncBusy(RuntimeError):
@@ -42,10 +48,12 @@ class SyncFailed(RuntimeError):
 def get_state(session: Session) -> SyncState:
     state = session.get(SyncState, 1)
     if state is None:
-        state = SyncState()
-        session.add(state)
-        session.commit()
-        session.refresh(state)
+        try:
+            session.add(SyncState())
+            session.commit()
+        except IntegrityError:  # another request created it first
+            session.rollback()
+        state = session.get(SyncState, 1)
     return state
 
 
@@ -54,15 +62,56 @@ def is_stale(state: SyncState, now: datetime | None = None) -> bool:
     return state.last_sync_at is None or (now - state.last_sync_at).total_seconds() > SYNC_STALE_AFTER_S
 
 
-def _claim(session: Session) -> SyncState:
-    state = get_state(session)
-    if state.status == "running" and state.started_at and utcnow() - state.started_at < timedelta(minutes=5):
-        raise SyncBusy("A sync is already running")
-    state.status = "running"
-    state.started_at = utcnow()
-    session.add(state)
-    session.commit()
-    return state
+class SyncLock:
+    """The single sync_state row, used as a lock so only one sync runs at a time.
+
+    Claiming is one conditional UPDATE, so two syncs that start together can't
+    both win. The holder's `started_at` is its token: `beat()` moves it forward
+    while the sync runs, and fails if another sync has since taken the lock.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+        self.token: datetime | None = None
+
+    def claim(self) -> None:
+        get_state(self.session)
+        now = utcnow()
+        result = self.session.execute(
+            update(SyncState)
+            .where(
+                SyncState.id == 1,
+                or_(
+                    SyncState.status != "running",
+                    SyncState.started_at.is_(None),
+                    SyncState.started_at < now - LOCK_STALE_AFTER,
+                ),
+            )
+            .values(status="running", started_at=now)
+        )
+        self.session.commit()
+        if result.rowcount != 1:
+            raise SyncBusy("A sync is already running")
+        self.token = now
+        self.session.expire_all()
+
+    def beat(self, force: bool = False) -> None:
+        """Refresh the lock; call between commits, at most every HEARTBEAT_EVERY."""
+        if self.token is None:
+            return
+        now = utcnow()
+        if not force and now - self.token < HEARTBEAT_EVERY:
+            return
+        result = self.session.execute(
+            update(SyncState)
+            .where(SyncState.id == 1, SyncState.status == "running", SyncState.started_at == self.token)
+            .values(started_at=now)
+        )
+        self.session.commit()
+        if result.rowcount != 1:
+            self.token = None
+            raise SyncBusy("Another sync took over")
+        self.token = now
 
 
 class Requests:
@@ -73,9 +122,15 @@ class Requests:
     the request is `required` or too many have failed.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, lock: SyncLock | None = None) -> None:
         self.failed = 0
         self.last_error: str | None = None
+        self.lock = lock
+
+    def checkpoint(self) -> None:
+        """Called after each commit: keeps the sync lock fresh."""
+        if self.lock:
+            self.lock.beat()
 
     def __call__(self, fn: Callable, *args, required: bool = False, **kwargs):
         time.sleep(REQUEST_DELAY_S)
@@ -132,6 +187,7 @@ def sync_activities(session: Session, garmin: Garmin, start: date, end: date, ca
             counts[run.sport] += 1
             latest = max(latest or run.start_local, run.start_local)
         session.commit()
+        call.checkpoint()
     state = get_state(session)
     if latest and (state.last_activity_start is None or latest > state.last_activity_start):
         state.last_activity_start = latest
@@ -175,6 +231,7 @@ def sync_metrics(session: Session, garmin: Garmin, start: date, end: date, call:
         _apply(row, parse.parse_training_status(call(garmin.get_training_status, iso)))
         session.add(row)
         session.commit()
+        call.checkpoint()
         days += 1
         day += timedelta(days=1)
 
@@ -206,7 +263,9 @@ def run_sync(
     metrics_since: date | None = None,
 ) -> dict:
     """Pull new runs, rides and daily metrics. Returns a short summary."""
-    state = _claim(session)
+    lock = SyncLock(session)
+    lock.claim()
+    state = get_state(session)
     today = local_today(session)
     try:
         if activities_since is None:
@@ -221,10 +280,12 @@ def run_sync(
                 if state.last_metrics_date
                 else today - FIRST_SYNC_LOOKBACK
             )
-        call = Requests()
+        call = Requests(lock)
         counts = sync_activities(session, garmin, activities_since, today, call)
         days = sync_metrics(session, garmin, metrics_since, today, call)
         sync_personal_records(session, garmin, call)
+    except SyncBusy:
+        raise  # another sync owns the state now; leave it alone
     except GarminConnectAuthenticationError as exc:
         _finish(session, "error", "Garmin rejected the stored login. Run `cli login` on your Mac to reconnect.")
         mark_needs_reconnect(session, f"Garmin rejected the stored tokens during sync: {exc}")

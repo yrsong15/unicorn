@@ -1,5 +1,5 @@
 import json
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -226,3 +226,50 @@ def test_unreachable_garmin_returns_502(logged_in, monkeypatch):
     monkeypatch.setattr("app.routers.sync.restore_client", unreachable)
     res = logged_in.post("/api/sync")
     assert res.status_code == 502 and "Couldn't reach Garmin" in res.json()["detail"]
+
+
+def test_only_one_sync_can_hold_the_lock(session):
+    from app.garmin.sync import SyncBusy, SyncLock
+
+    SyncLock(session).claim()
+    with pytest.raises(SyncBusy):
+        SyncLock(session).claim()
+
+
+def test_stale_lock_is_taken_over_and_old_holder_stops(session, monkeypatch):
+    from datetime import datetime
+
+    from app.garmin import sync
+
+    clock = [datetime(2026, 11, 1, 12, 0)]
+    monkeypatch.setattr(sync, "utcnow", lambda: clock[0])
+    first = sync.SyncLock(session)
+    first.claim()
+    clock[0] += sync.LOCK_STALE_AFTER + timedelta(seconds=1)  # first sync died
+    second = sync.SyncLock(session)
+    second.claim()
+    with pytest.raises(sync.SyncBusy):
+        first.beat(force=True)
+    second.beat(force=True)  # the new holder is unaffected
+
+
+def test_heartbeat_keeps_a_long_sync_from_looking_stale(session, monkeypatch):
+    from datetime import datetime
+
+    from app.garmin import sync
+
+    clock = [datetime(2026, 11, 1, 12, 0)]
+    monkeypatch.setattr(sync, "utcnow", lambda: clock[0])
+    lock = sync.SyncLock(session)
+    lock.claim()
+    for _ in range(20):  # 20 minutes of work, beating every minute
+        clock[0] += timedelta(minutes=1)
+        lock.beat()
+    with pytest.raises(sync.SyncBusy):
+        sync.SyncLock(session).claim()
+
+
+def test_finished_sync_releases_the_lock(session, monkeypatch):
+    _fast(monkeypatch, today=date(2026, 10, 15))
+    run_sync(session, FakeGarmin(), activities_since=date(2026, 10, 13), metrics_since=date(2026, 10, 15))
+    run_sync(session, FakeGarmin(), activities_since=date(2026, 10, 13), metrics_since=date(2026, 10, 15))
