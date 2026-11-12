@@ -5,14 +5,9 @@ import { createRoot } from 'react-dom/client'
 import { ApiError } from './api/client'
 import App from './App'
 import './index.css'
-import { applyTheme } from './pages/Settings'
+import { applyTheme, readTheme } from './lib/theme'
 
-try {
-  const saved = localStorage.getItem('theme')
-  if (saved === 'light' || saved === 'dark') applyTheme(saved)
-} catch {
-  /* storage unavailable */
-}
+applyTheme(readTheme())
 
 const queryClient: QueryClient = new QueryClient({
   defaultOptions: {

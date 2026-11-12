@@ -3,21 +3,7 @@ import { useEffect, useState } from 'react'
 import { useSync, useSyncStatus } from '../api/hooks'
 import { Badge, Button, Card, ErrorNote, PageHeader } from '../components/ui'
 import { relativeTime } from '../lib/format'
-
-type Theme = 'system' | 'light' | 'dark'
-
-function readTheme(): Theme {
-  try {
-    return (localStorage.getItem('theme') as Theme) || 'system'
-  } catch {
-    return 'system'
-  }
-}
-
-export function applyTheme(theme: Theme) {
-  if (theme === 'system') document.documentElement.removeAttribute('data-theme')
-  else document.documentElement.setAttribute('data-theme', theme)
-}
+import { applyTheme, readTheme, saveTheme, type Theme } from '../lib/theme'
 
 export default function Settings() {
   const status = useSyncStatus()
@@ -26,11 +12,7 @@ export default function Settings() {
 
   useEffect(() => {
     applyTheme(theme)
-    try {
-      localStorage.setItem('theme', theme)
-    } catch {
-      /* private mode */
-    }
+    saveTheme(theme)
   }, [theme])
 
   const g = status.data?.garmin
