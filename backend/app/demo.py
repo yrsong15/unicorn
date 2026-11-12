@@ -3,7 +3,7 @@
 import random
 from datetime import date, datetime, timedelta
 
-from sqlmodel import Session, SQLModel, delete
+from sqlmodel import Session, SQLModel, delete, select
 
 from app.db import engine
 from app.models import METERS_PER_MILE, DailyMetrics, Lap, PersonalRecord, Run, RunShoe, Shoe
@@ -33,7 +33,6 @@ def seed(days: int = 460, rng_seed: int = 7) -> None:
         today = date.today()
         start = today - timedelta(days=days)
         activity_id = 17_000_000_000
-        fitness = 0.0
         for offset in range(days + 1):
             day = start + timedelta(days=offset)
             progress = offset / days
@@ -108,7 +107,6 @@ def seed(days: int = 460, rng_seed: int = 7) -> None:
                 s.add(RunShoe(run_id=run.id, shoe_id=tempo.id, distance_m=run.distance_m))
             else:
                 s.add(RunShoe(run_id=run.id, shoe_id=shoe_for_easy.id, distance_m=run.distance_m))
-            fitness += load
 
         # Easy rides, mostly in the last year: Wednesday evenings and some Saturdays.
         for offset in range(days + 1):
@@ -180,7 +178,7 @@ def seed(days: int = 460, rng_seed: int = 7) -> None:
                 lt_hr=168,
                 lt_pace_s_per_mile=7 * 60 + 20 - 25 * progress,
             ))
-        for row in s.exec(__import__("sqlmodel").select(DailyMetrics)):
+        for row in s.exec(select(DailyMetrics)):
             score = row.readiness_score or 0
             row.readiness_level = "HIGH" if score >= 75 else "MODERATE" if score >= 50 else "LOW"
         s.add_all([
