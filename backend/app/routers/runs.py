@@ -1,13 +1,14 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict, Field
 from sqlmodel import Session, func, select
 
 from app.db import get_session
 from app.models import METERS_PER_MILE, Lap, Run, RunShoe, Shoe
 from app.schemas import RunDetailOut, RunSummaryOut, run_detail, run_summary
 from app.services.shoes import SegmentError, SegmentInput, replace_segments
+from app.validation import MAX_ID, MAX_MILES, BodyId, DbId, OptionalDbIdQuery
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 SPORTS = {"run", "ride", "all"}
@@ -34,11 +35,11 @@ class RunPage(BaseModel):
 def list_runs(
     start: date | None = None,
     end: date | None = None,
-    shoe_id: int | None = None,
-    ids: str | None = None,
+    shoe_id: OptionalDbIdQuery = None,
+    ids: str | None = Query(default=None, max_length=5000),
     sport: str = "run",
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     session: Session = Depends(get_session),
 ):
     if sport not in SPORTS:
@@ -53,9 +54,10 @@ def list_runs(
     if shoe_id is not None:
         query = query.where(Run.id.in_(select(RunShoe.run_id).where(RunShoe.shoe_id == shoe_id)))
     if ids:
-        query = query.where(Run.id.in_([int(i) for i in ids.split(",") if i.strip().isdigit()]))
+        wanted = [int(i) for i in ids.split(",") if i.strip().isdigit()]
+        query = query.where(Run.id.in_([i for i in wanted if 1 <= i <= MAX_ID]))
     total = session.exec(select(func.count()).select_from(query.subquery())).one()
-    runs = list(session.exec(query.order_by(Run.start_local.desc()).offset(offset).limit(min(limit, 500))))
+    runs = list(session.exec(query.order_by(Run.start_local.desc()).offset(offset).limit(limit)))
     segments = _segments(session, [r.id for r in runs])
     shoes = _shoes(session)
     return {"items": [run_summary(r, segments[r.id], shoes) for r in runs], "total": total}
@@ -69,26 +71,28 @@ def _get_run(session: Session, run_id: int) -> Run:
 
 
 @router.get("/{run_id}", response_model=RunDetailOut)
-def get_run(run_id: int, session: Session = Depends(get_session)):
+def get_run(run_id: DbId, session: Session = Depends(get_session)):
     run = _get_run(session, run_id)
     laps = list(session.exec(select(Lap).where(Lap.run_id == run.id)))
     return run_detail(run, _segments(session, [run.id])[run.id], _shoes(session), laps)
 
 
 class SegmentIn(BaseModel):
-    shoe_id: int
-    miles: float | None = Field(default=None, gt=0)
-    lap_from: int | None = None
-    lap_to: int | None = None
-    note: str | None = None
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    shoe_id: BodyId
+    miles: float | None = Field(default=None, gt=0, le=MAX_MILES)
+    lap_from: int | None = Field(default=None, ge=1, le=10_000)
+    lap_to: int | None = Field(default=None, ge=1, le=10_000)
+    note: str | None = Field(default=None, max_length=500)
 
 
 class SegmentsIn(BaseModel):
-    segments: list[SegmentIn]
+    segments: list[SegmentIn] = Field(max_length=50)
 
 
 @router.put("/{run_id}/shoes", response_model=RunDetailOut)
-def set_run_shoes(run_id: int, body: SegmentsIn, session: Session = Depends(get_session)):
+def set_run_shoes(run_id: DbId, body: SegmentsIn, session: Session = Depends(get_session)):
     run = _get_run(session, run_id)
     inputs = [
         SegmentInput(

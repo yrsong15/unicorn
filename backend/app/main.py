@@ -1,4 +1,7 @@
 from fastapi import APIRouter, Depends, FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from sqlmodel import Session
 
 from app.auth import require_login
@@ -33,6 +36,15 @@ async def security_headers(request: Request, call_next):
     for key, value in API_HEADERS.items():
         response.headers.setdefault(key, value)
     return response
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc: RequestValidationError):
+    # FastAPI's default response echoes each bad value back. Leave it out: a
+    # NaN can't be written as JSON (turning the 422 into a 500), and there's no
+    # need to repeat a rejected value, such as a password, in the response.
+    errors = [{k: v for k, v in e.items() if k != "input"} for e in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
 
 
 public = APIRouter(prefix="/api")
