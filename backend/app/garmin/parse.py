@@ -86,10 +86,6 @@ def _dt(value: Any) -> datetime | None:
     return None
 
 
-def run_category(activity: dict) -> str | None:
-    return RUN_CATEGORIES.get(_str(dig(activity, "activityType", "typeKey")) or "")
-
-
 def sport_and_category(activity: dict) -> tuple[str, str] | None:
     type_key = _str(dig(activity, "activityType", "typeKey")) or ""
     if type_key in RUN_CATEGORIES:
