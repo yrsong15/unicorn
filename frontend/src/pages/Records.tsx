@@ -16,7 +16,8 @@ export default function Records() {
   const r = q.data
   if (!r.totals) return <Empty>No runs yet.</Empty>
 
-  const thisYear = new Date().getFullYear()
+  // The server decides which year is "this year" (its local date), so take it from the data.
+  const thisYear = Math.max(0, ...(r.ytd?.cumulative ?? []).map((p) => p.year))
   const byDay = new Map<number, { day_of_year: number; [k: string]: number }>()
   for (const p of r.ytd?.cumulative ?? []) {
     const row = byDay.get(p.day_of_year) ?? { day_of_year: p.day_of_year }
