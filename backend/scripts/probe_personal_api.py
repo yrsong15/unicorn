@@ -8,7 +8,7 @@ app/garmin/sync.py depends on and reports which ones work.
 Usage (from backend/):
 
     GARMIN_PERSONAL_API_KEY=... uv run python scripts/probe_personal_api.py
-    uv run python scripts/probe_personal_api.py --dump /tmp/garmin-probe   # also save responses
+    uv run python scripts/probe_personal_api.py --dump ~/garmin-probe   # also save responses (private to you)
 
 If the env var isn't set, the key is prompted for (hidden). Nothing is written to the
 database, and the key and token are never stored or printed.
@@ -84,7 +84,9 @@ def main() -> None:
     print(f"Got a bearer token from {BASE}\n")
 
     if args.dump:
-        args.dump.mkdir(parents=True, exist_ok=True)
+        # Responses hold personal data, so keep the folder readable only by you.
+        args.dump.mkdir(mode=0o700, parents=True, exist_ok=True)
+        args.dump.chmod(0o700)
 
     results: list[tuple[str, str, int | None, str]] = []
 
