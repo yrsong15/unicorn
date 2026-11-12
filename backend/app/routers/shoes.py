@@ -30,10 +30,8 @@ def shoe_out(session: Session, shoe: Shoe, logged: dict[int, float] | None = Non
 
 
 @router.get("", response_model=list[ShoeOut])
-def list_shoes(include_retired: bool = True, session: Session = Depends(get_session)):
+def list_shoes(session: Session = Depends(get_session)):
     query = select(Shoe).order_by(Shoe.retired_at.is_not(None), Shoe.created_at.desc())
-    if not include_retired:
-        query = query.where(Shoe.retired_at.is_(None))
     logged = logged_meters_by_shoe(session)
     return [shoe_out(session, s, logged) for s in session.exec(query)]
 
@@ -109,11 +107,6 @@ def _get(session: Session, shoe_id: int) -> Shoe:
     if shoe is None:
         raise HTTPException(404, "Shoe not found")
     return shoe
-
-
-@router.get("/{shoe_id}", response_model=ShoeOut)
-def get_shoe(shoe_id: DbId, session: Session = Depends(get_session)):
-    return shoe_out(session, _get(session, shoe_id))
 
 
 @router.patch("/{shoe_id}", response_model=ShoeOut)

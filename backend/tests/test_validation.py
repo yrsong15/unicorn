@@ -16,9 +16,13 @@ def test_run_list_ignores_out_of_range_ids(logged_in, session):
     assert [r["id"] for r in page["items"]] == [run.id]
 
 
-@pytest.mark.parametrize("path", ["/api/runs/99999999999", "/api/runs/0", "/api/shoes/99999999999"])
+@pytest.mark.parametrize("path", ["/api/runs/99999999999", "/api/runs/0"])
 def test_ids_out_of_range_are_422(logged_in, path):
     assert logged_in.get(path).status_code == 422
+
+
+def test_shoe_id_out_of_range_is_422(logged_in):
+    assert logged_in.patch("/api/shoes/99999999999", json={"name": "x"}).status_code == 422
 
 
 @pytest.mark.parametrize("field", ["name", "start_miles", "retire_at_miles", "is_default"])
@@ -26,7 +30,8 @@ def test_shoe_patch_rejects_null_required_fields(logged_in, session, field):
     shoe = make_shoe(session, "Pegasus")
     res = logged_in.patch(f"/api/shoes/{shoe.id}", json={field: None})
     assert res.status_code == 422
-    assert logged_in.get(f"/api/shoes/{shoe.id}").json()["name"] == "Pegasus"
+    session.refresh(shoe)
+    assert shoe.name == "Pegasus"
 
 
 def test_shoe_patch_allows_clearing_optional_fields(logged_in, session):
