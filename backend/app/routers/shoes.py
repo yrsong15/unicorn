@@ -2,38 +2,23 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlmodel import Session, func, select
+from sqlmodel import Session, select
 
 from app.clock import local_today
 from app.db import get_session
-from app.models import RunShoe, Shoe
+from app.models import Shoe
 from app.schemas import ShoeOut
-from app.services.shoes import logged_meters_by_shoe, shoe_miles, wear_level
+from app.services.shoes import shoe_out, shoes_out
 from app.validation import MAX_MILES, DbId
 
 router = APIRouter(prefix="/shoes", tags=["shoes"])
 CATEGORIES = {"road", "treadmill", "track", "trail"}
 
 
-def shoe_out(session: Session, shoe: Shoe, logged: dict[int, float] | None = None) -> ShoeOut:
-    logged = logged if logged is not None else logged_meters_by_shoe(session)
-    miles = shoe_miles(shoe, logged.get(shoe.id, 0.0))
-    run_count = session.exec(
-        select(func.count(func.distinct(RunShoe.run_id))).where(RunShoe.shoe_id == shoe.id)
-    ).one()
-    return ShoeOut(
-        **shoe.model_dump(exclude={"created_at"}),
-        miles=miles,
-        wear=wear_level(miles, shoe.retire_at_miles),
-        run_count=run_count,
-    )
-
-
 @router.get("", response_model=list[ShoeOut])
 def list_shoes(session: Session = Depends(get_session)):
     query = select(Shoe).order_by(Shoe.retired_at.is_not(None), Shoe.created_at.desc())
-    logged = logged_meters_by_shoe(session)
-    return [shoe_out(session, s, logged) for s in session.exec(query)]
+    return shoes_out(session, list(session.exec(query)))
 
 
 COLOR = r"^#[0-9a-fA-F]{6}$"

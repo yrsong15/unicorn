@@ -4,6 +4,7 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.models import METERS_PER_MILE, Lap, Run, RunShoe, Shoe
+from app.schemas import ShoeOut
 
 # A split may overshoot the run's distance by this much (GPS rounding, typing 2.0 for 1.98).
 TOLERANCE_M = 0.05 * METERS_PER_MILE
@@ -107,3 +108,30 @@ def wear_level(miles: float, retire_at: float) -> str:
     if miles >= retire_at * WARN_FRACTION:
         return "warn"
     return "ok"
+
+
+def run_counts_by_shoe(session: Session) -> dict[int, int]:
+    rows = session.exec(
+        select(RunShoe.shoe_id, func.count(func.distinct(RunShoe.run_id))).group_by(RunShoe.shoe_id)
+    )
+    return {shoe_id: count for shoe_id, count in rows}
+
+
+def shoes_out(session: Session, shoes: list[Shoe]) -> list[ShoeOut]:
+    """API view of each shoe, with mileage and run counts from two grouped queries."""
+    logged = logged_meters_by_shoe(session)
+    counts = run_counts_by_shoe(session)
+    out = []
+    for shoe in shoes:
+        miles = shoe_miles(shoe, logged.get(shoe.id, 0.0))
+        out.append(ShoeOut(
+            **shoe.model_dump(exclude={"created_at"}),
+            miles=miles,
+            wear=wear_level(miles, shoe.retire_at_miles),
+            run_count=counts.get(shoe.id, 0),
+        ))
+    return out
+
+
+def shoe_out(session: Session, shoe: Shoe) -> ShoeOut:
+    return shoes_out(session, [shoe])[0]
