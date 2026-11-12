@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, FastAPI, Request
 from sqlmodel import Session
 
 from app.auth import require_login
+from app.clock import local_today
 from app.config import IS_PRODUCTION, ON_VERCEL
 from app.db import get_session
 from app.routers import auth, metrics, runs, shoes, summary, sync
@@ -51,7 +52,7 @@ for module in (runs, shoes, summary, metrics, sync):
 
 @private.get("/records")
 def records(session: Session = Depends(get_session)):
-    return compute_records(session)
+    return compute_records(session, local_today(session))
 
 
 app.include_router(public)

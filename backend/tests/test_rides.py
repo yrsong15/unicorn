@@ -14,7 +14,7 @@ from app.services.mileage import (
 )
 from app.services.records import compute_records
 from app.services.shoes import SegmentError, SegmentInput, apply_default_shoe, replace_segments
-from tests.factories import make_ride, make_run, make_shoe
+from tests.factories import make_ride, make_run, make_shoe, app_today
 
 TODAY = date(2026, 10, 17)  # Saturday; week starts 2026-10-12
 
@@ -78,7 +78,7 @@ def test_weekly_series_returns_factor(session):
 
 
 def test_weekly_api_exposes_both_series(logged_in, session):
-    today = date.today()
+    today = app_today()
     make_run(session, today, 4, load=100)
     make_ride(session, today, 20, 50)
     body = logged_in.get("/api/summary/weekly?range=3m").json()
@@ -111,8 +111,8 @@ def test_records_ignore_rides(session):
 
 
 def test_run_list_filters_by_sport(logged_in, session):
-    run = make_run(session, date.today(), 5)
-    ride = make_ride(session, date.today(), 20, 50)
+    run = make_run(session, app_today(), 5)
+    ride = make_ride(session, app_today(), 20, 50)
     assert [r["id"] for r in logged_in.get("/api/runs").json()["items"]] == [run.id]
     rides = logged_in.get("/api/runs?sport=ride").json()["items"]
     assert [r["id"] for r in rides] == [ride.id]
@@ -124,7 +124,7 @@ def test_run_list_filters_by_sport(logged_in, session):
 def test_training_daily_load_is_split_by_sport(logged_in, session):
     from app.models import DailyMetrics
 
-    today = date.today()
+    today = app_today()
     session.add(DailyMetrics(day=today - timedelta(days=2), acute_load=300))
     session.commit()
     make_run(session, today, 5, load=120)

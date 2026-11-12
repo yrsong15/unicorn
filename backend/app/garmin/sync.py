@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta
 from garminconnect import Garmin, GarminConnectTooManyRequestsError
 from sqlmodel import Session, delete, select
 
+from app.clock import local_today
 from app.config import SYNC_STALE_AFTER_S
 from app.garmin import parse
 from app.models import DailyMetrics, Lap, PersonalRecord, Run, SyncState, utcnow
@@ -173,7 +174,7 @@ def run_sync(
 ) -> dict:
     """Pull new runs, rides and daily metrics. Returns a short summary."""
     state = _claim(session)
-    today = date.today()
+    today = local_today(session)
     try:
         if activities_since is None:
             activities_since = (

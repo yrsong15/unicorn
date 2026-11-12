@@ -1,8 +1,9 @@
-from datetime import date, timedelta
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
+from app.clock import local_today
 from app.db import get_session
 from app.models import DailyMetrics, Run, Shoe
 from app.routers.shoes import shoe_out
@@ -36,7 +37,7 @@ def _factor(per_mile: float | None) -> float | None:
 @router.get("/weekly")
 def weekly(range: str = "3m", session: Session = Depends(get_session)):  # noqa: A002
     try:
-        weeks, per_mile = weekly_series(session, range)
+        weeks, per_mile = weekly_series(session, range, local_today(session))
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     return {"range": range, "load_per_run_mile": _factor(per_mile), "weeks": [_week_dict(w) for w in weeks]}
@@ -44,7 +45,7 @@ def weekly(range: str = "3m", session: Session = Depends(get_session)):  # noqa:
 
 @router.get("/dashboard")
 def dashboard(session: Session = Depends(get_session)):
-    today = date.today()
+    today = local_today(session)
     this_week = week_start(today)
     last_week = this_week - timedelta(weeks=1)
     runs = list(session.exec(select(Run).where(Run.local_date >= last_week)))

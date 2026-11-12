@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlmodel import Session, func, select
 
+from app.clock import local_today
 from app.db import get_session
 from app.models import RunShoe, Shoe
 from app.schemas import ShoeOut
@@ -114,7 +115,7 @@ def update_shoe(shoe_id: int, body: ShoePatch, session: Session = Depends(get_se
 
 @router.post("/{shoe_id}/retire", response_model=ShoeOut)
 def retire_shoe(shoe_id: int, session: Session = Depends(get_session)):
-    return update_shoe(shoe_id, ShoePatch(retired_at=date.today()), session)
+    return update_shoe(shoe_id, ShoePatch(retired_at=local_today(session)), session)
 
 
 @router.post("/{shoe_id}/unretire", response_model=ShoeOut)

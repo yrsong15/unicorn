@@ -3,6 +3,7 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
+from app.clock import local_today
 from app.db import get_session
 from app.models import DailyMetrics, Run
 from app.services.mileage import range_start
@@ -17,7 +18,7 @@ TRAINING = ["acute_load", "chronic_load", "acwr", "readiness_score", "readiness_
 def _series(session: Session, range_key: str, fields: list[str]) -> list[dict]:
     first = session.exec(select(DailyMetrics.day).order_by(DailyMetrics.day)).first()
     try:
-        start = range_start(range_key, date.today(), first)
+        start = range_start(range_key, local_today(session), first)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     rows = session.exec(select(DailyMetrics).where(DailyMetrics.day >= start).order_by(DailyMetrics.day))
@@ -40,8 +41,9 @@ def fitness(range: str = "6m", session: Session = Depends(get_session)):  # noqa
 def training(range: str = "3m", session: Session = Depends(get_session)):  # noqa: A002
     series = _series(session, range, TRAINING)
     latest = {f: next((d[f] for d in reversed(series) if d[f] is not None), None) for f in TRAINING}
-    first = series[0]["day"] if series else date.today()
-    return {"range": range, "series": series, "latest": latest, "daily_load": daily_load(session, first, date.today())}
+    today = local_today(session)
+    first = series[0]["day"] if series else today
+    return {"range": range, "series": series, "latest": latest, "daily_load": daily_load(session, first, today)}
 
 
 def daily_load(session: Session, start: date, end: date) -> list[dict]:

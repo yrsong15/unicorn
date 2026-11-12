@@ -1,6 +1,6 @@
-from datetime import date, timedelta
+from datetime import timedelta
 
-from tests.factories import make_run
+from tests.factories import make_run, app_today
 
 
 def test_api_requires_login(client):
@@ -27,7 +27,7 @@ def test_cron_requires_secret(client):
 
 
 def test_weekly_and_dashboard(logged_in, session):
-    today = date.today()
+    today = app_today()
     make_run(session, today, 5)
     make_run(session, today - timedelta(days=7), 8)
     weekly = logged_in.get("/api/summary/weekly?range=3m").json()["weeks"]
@@ -38,7 +38,7 @@ def test_weekly_and_dashboard(logged_in, session):
 
 
 def test_records(logged_in, session):
-    today = date.today()
+    today = app_today()
     for weeks_ago in (0, 1, 2, 4):
         make_run(session, today - timedelta(weeks=weeks_ago), 3 + weeks_ago)
     rec = logged_in.get("/api/records").json()
@@ -48,7 +48,7 @@ def test_records(logged_in, session):
 
 
 def test_run_detail_and_list(logged_in, session):
-    run = make_run(session, date.today(), 6, laps=[2, 4])
+    run = make_run(session, app_today(), 6, laps=[2, 4])
     detail = logged_in.get(f"/api/runs/{run.id}").json()
     assert [round(l["miles"]) for l in detail["laps"]] == [2, 4]
     assert detail["unassigned_miles"] == 6

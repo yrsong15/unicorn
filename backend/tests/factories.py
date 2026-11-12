@@ -1,8 +1,13 @@
 from datetime import date, datetime, time
 
-from app.models import METERS_PER_MILE, Lap, Run, Shoe
+from app.models import METERS_PER_MILE, Lap, Run, Shoe, utcnow
 
 _next_id = [1000]
+
+
+def app_today() -> date:
+    """The app's "today" for factory-made runs, which have no UTC offset."""
+    return utcnow().date()
 
 
 def make_run(
