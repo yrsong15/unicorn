@@ -2,14 +2,10 @@ from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from sqlmodel import Session
 
 from app.auth import require_login
-from app.clock import local_today
 from app.config import IS_PRODUCTION, ON_VERCEL
-from app.db import get_session
-from app.routers import auth, metrics, runs, shoes, summary, sync
-from app.services.records import compute_records
+from app.routers import auth, metrics, records, runs, shoes, summary, sync
 
 # Interactive API docs are for local development only; the deployed app keeps
 # its endpoint list private.
@@ -58,13 +54,8 @@ def health():
 
 
 private = APIRouter(prefix="/api", dependencies=[Depends(require_login)])
-for module in (runs, shoes, summary, metrics, sync):
+for module in (runs, shoes, summary, metrics, records, sync):
     private.include_router(module.router)
-
-
-@private.get("/records")
-def records(session: Session = Depends(get_session)):
-    return compute_records(session, local_today(session))
 
 
 app.include_router(public)
