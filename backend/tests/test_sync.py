@@ -273,3 +273,66 @@ def test_finished_sync_releases_the_lock(session, monkeypatch):
     _fast(monkeypatch, today=date(2026, 10, 15))
     run_sync(session, FakeGarmin(), activities_since=date(2026, 10, 13), metrics_since=date(2026, 10, 15))
     run_sync(session, FakeGarmin(), activities_since=date(2026, 10, 13), metrics_since=date(2026, 10, 15))
+
+
+def test_laps_are_fetched_again_if_the_first_request_failed(session, monkeypatch):
+    from garminconnect import GarminConnectConnectionError
+
+    class SplitsFailOnce(FakeGarmin):
+        failed = False
+
+        def get_activity_splits(self, activity_id):
+            if not SplitsFailOnce.failed:
+                SplitsFailOnce.failed = True
+                raise GarminConnectConnectionError("503")
+            return super().get_activity_splits(activity_id)
+
+    _fast(monkeypatch, today=date(2026, 10, 15))
+    garmin = SplitsFailOnce()
+    run_sync(session, garmin, activities_since=date(2026, 10, 13), metrics_since=date(2026, 10, 15))
+    first = session.exec(select(Run).order_by(Run.start_local)).first()
+    assert session.exec(select(Lap).where(Lap.run_id == first.id)).all() == []
+    run_sync(session, garmin, activities_since=date(2026, 10, 13), metrics_since=date(2026, 10, 15))
+    assert len(session.exec(select(Lap).where(Lap.run_id == first.id)).all()) == 3
+
+
+class EditedDistance(FakeGarmin):
+    """The first activity's distance changes after the first sync."""
+
+    def __init__(self):
+        super().__init__()
+        self.distance = None
+
+    def get_activities_by_date(self, start, end):
+        acts = super().get_activities_by_date(start, end)
+        if self.distance is not None:
+            acts[0] = {**acts[0], "distance": self.distance}
+        return acts
+
+
+def test_distance_edit_stretches_a_whole_run_shoe(session, monkeypatch):
+    _fast(monkeypatch, today=date(2026, 10, 15))
+    make_shoe(session, "Daily", is_default=True)
+    garmin = EditedDistance()
+    run_sync(session, garmin, activities_since=date(2026, 10, 13), metrics_since=date(2026, 10, 15))
+    run = session.exec(select(Run).order_by(Run.start_local)).first()
+    garmin.distance = run.distance_m + 800
+    splits_before = sum(1 for name, _ in garmin.calls if name == "splits")
+    run_sync(session, garmin, activities_since=date(2026, 10, 13), metrics_since=date(2026, 10, 15))
+    seg = session.exec(select(RunShoe).where(RunShoe.run_id == run.id)).one()
+    assert seg.distance_m == pytest.approx(run.distance_m)
+    assert sum(1 for name, _ in garmin.calls if name == "splits") == splits_before + 1  # laps refetched
+
+
+def test_distance_edit_leaves_a_split_alone(session, monkeypatch):
+    from app.services.shoes import SegmentInput, replace_segments
+
+    _fast(monkeypatch, today=date(2026, 10, 15))
+    a, b = make_shoe(session, "A"), make_shoe(session, "B")
+    garmin = EditedDistance()
+    run_sync(session, garmin, activities_since=date(2026, 10, 13), metrics_since=date(2026, 10, 15))
+    run = session.exec(select(Run).order_by(Run.start_local)).first()
+    replace_segments(session, run, [SegmentInput(a.id, 1000), SegmentInput(b.id, 1000)])
+    garmin.distance = run.distance_m + 800
+    run_sync(session, garmin, activities_since=date(2026, 10, 13), metrics_since=date(2026, 10, 15))
+    assert sorted(s.distance_m for s in session.exec(select(RunShoe).where(RunShoe.run_id == run.id))) == [1000, 1000]

@@ -19,8 +19,8 @@ from app.clock import local_today
 from app.config import SYNC_STALE_AFTER_S
 from app.garmin import parse
 from app.garmin.client import GarminNotConnected, mark_needs_reconnect
-from app.models import DailyMetrics, Lap, PersonalRecord, Run, SyncState, utcnow
-from app.services.shoes import apply_default_shoe
+from app.models import DailyMetrics, Lap, PersonalRecord, Run, RunShoe, SyncState, utcnow
+from app.services.shoes import TOLERANCE_M, apply_default_shoe
 
 log = logging.getLogger(__name__)
 
@@ -155,12 +155,24 @@ class Requests:
             raise SyncFailed(f"{self.failed} Garmin requests failed; last was {what}") from exc
 
 
+# A distance change smaller than this (meters) is rounding, not an edit.
+DISTANCE_EDIT_M = 1.0
+
+
 def upsert_run(session: Session, garmin: Garmin | None, activity: dict, call: Requests | None = None) -> Run | None:
+    """Insert or update one activity.
+
+    Laps are fetched for new activities, for ones that still have none (an
+    earlier request failed), and when the distance was edited in Garmin
+    Connect. After a distance edit, a single shoe that covered the whole old
+    distance is stretched to the new one.
+    """
     fields = parse.parse_activity(activity)
     if fields is None:
         return None
     run = session.exec(select(Run).where(Run.garmin_activity_id == fields["garmin_activity_id"])).first()
     is_new = run is None
+    old_distance = None if is_new else run.distance_m
     if is_new:
         run = Run(**fields)
     else:
@@ -169,14 +181,33 @@ def upsert_run(session: Session, garmin: Garmin | None, activity: dict, call: Re
     session.add(run)
     session.flush()
 
-    if is_new:
+    distance_edited = old_distance is not None and abs(old_distance - run.distance_m) > DISTANCE_EDIT_M
+    has_laps = not is_new and session.exec(select(Lap.id).where(Lap.run_id == run.id)).first() is not None
+    if garmin and (is_new or not has_laps or distance_edited):
         call = call or Requests()
-        laps = parse.parse_laps(call(garmin.get_activity_splits, run.garmin_activity_id)) if garmin else []
-        session.exec(delete(Lap).where(Lap.run_id == run.id))
-        for lap in laps:
-            session.add(Lap(run_id=run.id, **lap))
+        laps = parse.parse_laps(call(garmin.get_activity_splits, run.garmin_activity_id))
+        # Keep the laps we have if the refetch came back empty or failed.
+        if laps or is_new:
+            session.exec(delete(Lap).where(Lap.run_id == run.id))
+            for lap in laps:
+                session.add(Lap(run_id=run.id, **lap))
+
+    if is_new:
         apply_default_shoe(session, run)
+    elif distance_edited:
+        follow_distance_edit(session, run, old_distance)
     return run
+
+
+def follow_distance_edit(session: Session, run: Run, old_distance: float) -> None:
+    """Stretch a run's only shoe segment if it covered the whole old distance."""
+    segments = session.exec(select(RunShoe).where(RunShoe.run_id == run.id)).all()
+    if len(segments) != 1 or run.distance_m <= 0:
+        return
+    seg = segments[0]
+    if seg.lap_from is None and abs(seg.distance_m - old_distance) <= TOLERANCE_M:
+        seg.distance_m = run.distance_m
+        session.add(seg)
 
 
 def sync_activities(session: Session, garmin: Garmin, start: date, end: date, call: Requests) -> dict[str, int]:
