@@ -145,11 +145,14 @@ class Requests:
             if required:
                 raise SyncFailed(f"Garmin request {name} failed: {exc}") from exc
             log.info("Garmin call %s%s failed: %s", name, args, exc)
-            self.failed += 1
-            self.last_error = f"{name}: {exc}"
-            if self.failed >= MAX_FAILED_REQUESTS:
-                raise SyncFailed(f"{self.failed} Garmin requests failed; last was {self.last_error}") from exc
+            self.record_failure(f"{name}: {exc}", exc)
             return None
+
+    def record_failure(self, what: str, exc: Exception) -> None:
+        self.failed += 1
+        self.last_error = what
+        if self.failed >= MAX_FAILED_REQUESTS:
+            raise SyncFailed(f"{self.failed} Garmin requests failed; last was {what}") from exc
 
 
 def upsert_run(session: Session, garmin: Garmin | None, activity: dict, call: Requests | None = None) -> Run | None:
@@ -181,12 +184,20 @@ def sync_activities(session: Session, garmin: Garmin, start: date, end: date, ca
     activities = call(garmin.get_activities_by_date, start.isoformat(), end.isoformat(), required=True) or []
     counts = {"run": 0, "ride": 0}
     latest: datetime | None = None
-    for activity in activities:
-        run = upsert_run(session, garmin, activity, call)
-        if run is not None:
-            counts[run.sport] += 1
-            latest = max(latest or run.start_local, run.start_local)
-        session.commit()
+    for activity in activities if isinstance(activities, list) else []:
+        try:
+            run = upsert_run(session, garmin, activity, call)
+            if run is not None:
+                counts[run.sport] += 1
+                latest = max(latest or run.start_local, run.start_local)
+            session.commit()
+        except (GarminConnectTooManyRequestsError, GarminConnectAuthenticationError, SyncFailed):
+            raise
+        except Exception as exc:  # one bad activity shouldn't stop the rest
+            session.rollback()
+            activity_id = activity.get("activityId") if isinstance(activity, dict) else None
+            log.warning("Skipped activity %s: %s", activity_id, exc)
+            call.record_failure(f"activity {activity_id}: {exc}", exc)
         call.checkpoint()
     state = get_state(session)
     if latest and (state.last_activity_start is None or latest > state.last_activity_start):
