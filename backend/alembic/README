@@ -1,1 +1,18 @@
-Generic single-database configuration.
+Database migrations for Unicorn.
+
+The database URL comes from app.db (DATABASE_URL in backend/.env), not from
+alembic.ini. Run commands from backend/.
+
+Apply migrations:
+
+    uv run python -m app.cli migrate
+
+On Postgres, every migrate run also enables Row Level Security on every table
+in the public schema (see env.py), so new tables are covered automatically.
+
+Add a migration after changing app/models.py:
+
+    uv run alembic revision --autogenerate -m "describe the change"
+
+Review the generated file in versions/ before applying it. Autogenerate misses
+some changes, such as renamed columns and data migrations.
