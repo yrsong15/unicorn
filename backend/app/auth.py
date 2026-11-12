@@ -10,7 +10,6 @@ from itsdangerous import BadSignature, SignatureExpired, TimestampSigner
 from app.config import APP_PASSWORD_HASH, IS_PRODUCTION, ON_VERCEL, SESSION_MAX_AGE_S, SESSION_SECRET
 
 COOKIE = "unicorn_session"
-_signer = TimestampSigner(SESSION_SECRET, salt="unicorn-session")
 _SCRYPT = {"n": 2**14, "r": 8, "p": 1}
 
 
@@ -33,15 +32,21 @@ def verify_password(password: str, stored: str | None) -> bool:
     return hmac.compare_digest(digest.hex(), digest_hex)
 
 
+def _signer() -> TimestampSigner:
+    # Mixing in the password hash means changing the password (a new
+    # APP_PASSWORD_HASH) invalidates every existing session cookie.
+    return TimestampSigner(f"{SESSION_SECRET}:{APP_PASSWORD_HASH or ''}", salt="unicorn-session")
+
+
 def start_session(response: Response) -> None:
-    token = _signer.sign(b"owner").decode()
+    token = _signer().sign(b"owner").decode()
     response.set_cookie(
         COOKIE, token, max_age=SESSION_MAX_AGE_S, httponly=True, samesite="lax", secure=IS_PRODUCTION or ON_VERCEL
     )
 
 
 def end_session(response: Response) -> None:
-    response.delete_cookie(COOKIE)
+    response.delete_cookie(COOKIE, httponly=True, samesite="lax", secure=IS_PRODUCTION or ON_VERCEL)
 
 
 def is_logged_in(request: Request) -> bool:
@@ -49,7 +54,7 @@ def is_logged_in(request: Request) -> bool:
     if not token:
         return False
     try:
-        _signer.unsign(token, max_age=SESSION_MAX_AGE_S)
+        _signer().unsign(token, max_age=SESSION_MAX_AGE_S)
         return True
     except (BadSignature, SignatureExpired):
         return False

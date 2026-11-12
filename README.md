@@ -87,7 +87,7 @@ cd backend && uv run pytest
    - Create a new project.
    - Under **Connect → Transaction pooler**, copy the connection string (port 6543).
    - Put it in `backend/.env` as `DATABASE_URL=...`.
-2. **Create the tables** by running `uv run python -m app.cli migrate` from `backend/`. The migration also enables Row Level Security on every table, which blocks Supabase's public Data API from reading anything, including Garmin tokens. The backend connects as the table owner, so it's unaffected.
+2. **Create the tables** by running `uv run python -m app.cli migrate` from `backend/`. Every migrate run also enables Row Level Security on every table in the `public` schema, which blocks Supabase's public Data API from reading anything, including Garmin tokens. The backend connects as the table owner, so it's unaffected. Run `migrate` before pushing code that adds a migration.
 3. **Connect Garmin and import history:**
    ```bash
    uv run python -m app.cli login
@@ -95,13 +95,20 @@ cd backend && uv run pytest
    ```
 4. **Vercel:**
    - Import the GitHub repo as a new project.
-   - In Project → Settings → Environment Variables, set `DATABASE_URL`, `APP_PASSWORD_HASH`, `SESSION_SECRET`, `GARMIN_TOKEN_KEY` (the same key you used locally), and `CRON_SECRET`.
+   - In Project → Settings → Environment Variables, set `DATABASE_URL`, `APP_PASSWORD_HASH`, `SESSION_SECRET`, `GARMIN_TOKEN_KEY` (the same key you used locally), and `CRON_SECRET`, for the **Production** environment only. Preview deployments then have no access to the database (they fail to start, by design).
    - Deploy.
 5. **Test a server-side sync:** open the deployed app and click **Sync now**. This confirms Garmin accepts requests from Vercel.
 
 ## Workflow
 
 Changes that come from the repo owner (Young Re Song) can always be committed and pushed straight to `main`. No branch or pull request is needed. Vercel deploys every push to `main` to production.
+
+## Security notes
+
+- **Login throttling:** 5 wrong passwords from one IP in 15 minutes locks that IP out for 15 minutes. More than 100 wrong passwords across all IPs in an hour locks every login for 15 minutes; sessions you're already signed in with keep working.
+- **Signing out everywhere:** session cookies are signed with a key that includes the password hash, so setting a new `APP_PASSWORD_HASH` signs out every browser.
+- **API docs** (`/api/docs`) are only served locally, not on Vercel.
+- **Stored activity data:** coordinates and Garmin profile fields are stripped before an activity's raw payload is saved.
 
 ## Data notes
 

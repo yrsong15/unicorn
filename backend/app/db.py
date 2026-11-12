@@ -15,7 +15,11 @@ def _make_engine(url: str):
         url = "postgresql://" + url.removeprefix("postgres://")
     if url.startswith("postgresql://"):
         url = "postgresql+psycopg://" + url.removeprefix("postgresql://")
-    return create_engine(url, poolclass=NullPool, connect_args={"prepare_threshold": None})
+    connect_args: dict = {"prepare_threshold": None}
+    # Require TLS unless the URL explicitly chooses an sslmode (e.g. verify-full).
+    if "sslmode=" not in url:
+        connect_args["sslmode"] = "require"
+    return create_engine(url, poolclass=NullPool, connect_args=connect_args)
 
 
 engine = _make_engine(DATABASE_URL)

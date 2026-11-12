@@ -4,6 +4,7 @@ Garmin's endpoints are undocumented and shift over time, so every lookup here is
 defensive: a missing or renamed field becomes None instead of an exception.
 """
 
+import re
 from datetime import date, datetime
 from typing import Any
 
@@ -101,8 +102,18 @@ def parse_activity(activity: dict) -> dict | None:
         "training_load": _num(activity.get("activityTrainingLoad")),
         "vo2max": _num(activity.get("vO2MaxValue")),
         "hr_zones": [z or 0.0 for z in zones] if any(zones) else None,
-        "raw": activity,
+        "raw": strip_personal(activity),
     }
+
+
+# Activity fields that identify the athlete or where they were. Not needed for
+# anything the app shows, so they aren't stored.
+_COORDINATE_KEY = re.compile(r"(^|[a-z])(lat|lon|Lat|Lon)(itude|gitude)?$")
+_PERSONAL_KEY = re.compile(r"location|owner|profile|device|polyline|geo|userpro|username|displayname|fullname", re.I)
+
+
+def strip_personal(activity: dict) -> dict:
+    return {k: v for k, v in activity.items() if not (_COORDINATE_KEY.search(k) or _PERSONAL_KEY.search(k))}
 
 
 def parse_laps(splits: dict | None) -> list[dict]:

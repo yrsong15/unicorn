@@ -128,6 +128,17 @@ class DailyMetrics(SQLModel, table=True):
     lt_pace_s_per_mile: float | None = None
 
 
+class LoginAttempt(SQLModel, table=True):
+    """Failed logins per client IP, for throttling password guesses."""
+
+    __tablename__ = "login_attempts"
+
+    ip: str = Field(primary_key=True, max_length=64)
+    failures: int = 0
+    first_failure_at: NaiveDatetime = Field(default_factory=utcnow, sa_column=Column(DateTime(timezone=False), nullable=False))
+    locked_until: NaiveDatetime | None = Field(default=None, sa_column=Column(DateTime(timezone=False), nullable=True))
+
+
 class PersonalRecord(SQLModel, table=True):
     __tablename__ = "personal_records"
 
