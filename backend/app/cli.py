@@ -6,6 +6,7 @@
     uv run python -m app.cli hash-password         # value for APP_PASSWORD_HASH
     uv run python -m app.cli gen-key               # value for GARMIN_TOKEN_KEY
     uv run python -m app.cli seed-demo             # fake data for local UI work (SQLite only)
+    uv run python -m app.cli migrate               # apply database migrations (alembic upgrade head)
 """
 
 import argparse
