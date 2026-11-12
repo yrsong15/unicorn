@@ -9,7 +9,6 @@ export interface ShoeSegment {
   miles: number
   lap_from: number | null
   lap_to: number | null
-  note: string | null
 }
 
 export interface RunSummary {

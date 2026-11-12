@@ -20,7 +20,6 @@ class SegmentInput:
     distance_m: float | None = None
     lap_from: int | None = None
     lap_to: int | None = None
-    note: str | None = None
 
 
 def default_shoe_for(session: Session, category: str) -> Shoe | None:
@@ -69,7 +68,6 @@ def resolve_segments(session: Session, run: Run, segments: list[SegmentInput]) -
                 distance_m=distance,
                 lap_from=seg.lap_from,
                 lap_to=seg.lap_to if seg.lap_from is not None else None,
-                note=seg.note,
             )
         )
     total = sum(s.distance_m for s in resolved)

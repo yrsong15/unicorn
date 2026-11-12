@@ -84,7 +84,6 @@ class SegmentIn(BaseModel):
     miles: float | None = Field(default=None, gt=0, le=MAX_MILES)
     lap_from: int | None = Field(default=None, ge=1, le=10_000)
     lap_to: int | None = Field(default=None, ge=1, le=10_000)
-    note: str | None = Field(default=None, max_length=500)
 
 
 class SegmentsIn(BaseModel):
@@ -100,7 +99,6 @@ def set_run_shoes(run_id: DbId, body: SegmentsIn, session: Session = Depends(get
             distance_m=None if s.miles is None else s.miles * METERS_PER_MILE,
             lap_from=s.lap_from,
             lap_to=s.lap_to,
-            note=s.note,
         )
         for s in body.segments
     ]

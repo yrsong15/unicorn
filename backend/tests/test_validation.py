@@ -62,5 +62,5 @@ def test_non_finite_numbers_rejected(logged_in, session):
 def test_segment_bounds(logged_in, session):
     run = make_run(session, app_today(), 3, laps=[1, 2])
     shoe = make_shoe(session)
-    for seg in ({"shoe_id": shoe.id, "lap_from": 0}, {"shoe_id": 2**40, "miles": 1}, {"shoe_id": shoe.id, "miles": 1, "note": "x" * 501}):
+    for seg in ({"shoe_id": shoe.id, "lap_from": 0}, {"shoe_id": 2**40, "miles": 1}):
         assert logged_in.put(f"/api/runs/{run.id}/shoes", json={"segments": [seg]}).status_code == 422

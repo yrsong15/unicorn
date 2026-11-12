@@ -102,6 +102,7 @@ class RunShoe(SQLModel, table=True):
     distance_m: float
     lap_from: int | None = None
     lap_to: int | None = None
+    # Unused: nothing reads or writes it. Kept so the model matches the table.
     note: str | None = None
 
 

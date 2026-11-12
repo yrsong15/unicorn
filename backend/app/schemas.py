@@ -29,7 +29,6 @@ class ShoeSegmentOut(BaseModel):
     miles: float
     lap_from: int | None
     lap_to: int | None
-    note: str | None
 
 
 class RunSummaryOut(BaseModel):
@@ -98,7 +97,6 @@ def segment_out(seg: RunShoe, shoes: dict[int, Shoe]) -> ShoeSegmentOut:
         miles=seg.distance_m / METERS_PER_MILE,
         lap_from=seg.lap_from,
         lap_to=seg.lap_to,
-        note=seg.note,
     )
 
 
