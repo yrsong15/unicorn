@@ -60,7 +60,10 @@ def cron_router() -> APIRouter:
     @cron.get("/cron/sync")
     def cron_sync(authorization: str | None = Header(default=None), session: Session = Depends(get_session)):
         expected = f"Bearer {CRON_SECRET}" if CRON_SECRET else None
-        if not expected or not hmac.compare_digest(authorization or "", expected):
+        # Compare bytes: compare_digest raises on non-ASCII str, and a client
+        # controls this header.
+        given = (authorization or "").encode("utf-8", "surrogateescape")
+        if not expected or not hmac.compare_digest(given, expected.encode()):
             raise HTTPException(401, "Bad cron secret")
         return _sync(session)
 

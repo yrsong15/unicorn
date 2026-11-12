@@ -54,3 +54,9 @@ def test_run_detail_and_list(logged_in, session):
     assert detail["unassigned_miles"] == 6
     page = logged_in.get("/api/runs").json()
     assert page["total"] == 1
+
+
+def test_cron_rejects_non_ascii_secret(client):
+    # Header values arrive as Latin-1; compare_digest refuses non-ASCII str.
+    res = client.get("/api/cron/sync", headers={"Authorization": "Bearer café".encode("latin-1")})
+    assert res.status_code == 401
