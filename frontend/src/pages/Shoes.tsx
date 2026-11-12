@@ -131,6 +131,7 @@ function ShoeCard({ shoe, onEdit }: { shoe: Shoe; onEdit: () => void }) {
         </div>
       </div>
       <WearBar shoe={shoe} />
+      {shoe.notes && <p className="mt-3 whitespace-pre-line text-sm text-ink-2">{shoe.notes}</p>}
       <div className="mt-3 flex items-center justify-between text-sm">
         <Link to={`/runs?shoe=${shoe.id}`} className="text-link">
           {shoe.run_count} runs →
