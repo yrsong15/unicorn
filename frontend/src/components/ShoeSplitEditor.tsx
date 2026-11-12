@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { useSetRunShoes, useShoes } from '../api/hooks'
 import type { RunDetail } from '../api/types'
@@ -22,10 +22,14 @@ export function ShoeSplitEditor({ run }: { run: RunDetail }) {
   const save = useSetRunShoes(run.id)
   const [rows, setRows] = useState<Row[]>(() => toRows(run))
   const [dirty, setDirty] = useState(false)
+  const [shownRun, setShownRun] = useState(run)
 
-  useEffect(() => {
-    if (!dirty) setRows(toRows(run))
-  }, [run, dirty])
+  // Follow a refetched run unless the user is mid-edit. Adjusting state during
+  // render (rather than in an effect) avoids rendering stale rows first.
+  if (!dirty && run !== shownRun) {
+    setShownRun(run)
+    setRows(toRows(run))
+  }
 
   const lapMiles = (from: number, to: number) =>
     run.laps.filter((l) => l.idx >= from && l.idx <= to).reduce((s, l) => s + l.miles, 0)
