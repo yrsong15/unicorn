@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { useSync, useSyncStatus } from '../api/hooks'
-import { Badge, Button, Card, ErrorNote, PageHeader } from '../components/ui'
+import { Badge, Button, Card, ErrorNote, PageHeader, Segmented } from '../components/ui'
 import { relativeTime } from '../lib/format'
 import { applyTheme, readTheme, saveTheme, type Theme } from '../lib/theme'
 
@@ -42,20 +42,12 @@ export default function Settings() {
           {sync.error && <div className="mt-2"><ErrorNote error={sync.error} /></div>}
         </Card>
         <Card title="Appearance">
-          <div role="radiogroup" aria-label="Theme" className="inline-flex rounded-lg border border-border bg-surface-2 p-0.5">
-            {(['system', 'light', 'dark'] as Theme[]).map((t) => (
-              <button
-                key={t}
-                type="button"
-                role="radio"
-                aria-checked={theme === t}
-                onClick={() => setTheme(t)}
-                className={`rounded-md px-3 py-1 text-sm font-medium capitalize ${theme === t ? 'bg-primary text-primary-ink' : 'text-ink-2'}`}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            label="Theme"
+            value={theme}
+            onChange={setTheme}
+            options={[{ key: 'system', label: 'System' }, { key: 'light', label: 'Light' }, { key: 'dark', label: 'Dark' }]}
+          />
           <p className="mt-4 text-sm text-ink-2">
             Default shoes are set per shoe on the Shoes page. The app password is the <code className="rounded bg-surface-2 px-1">APP_PASSWORD_HASH</code> environment variable; generate a new one with{' '}
             <code className="rounded bg-surface-2 px-1">uv run python -m app.cli hash-password</code>.
