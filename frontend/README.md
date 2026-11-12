@@ -20,6 +20,7 @@ This serves the app at http://localhost:5173 and proxies `/api` to the backend a
 | `npm run dev` | Dev server with hot reload |
 | `npm run build` | Type-check (`tsc -b`), then build to `dist/` |
 | `npm run lint` | Lint with Oxlint |
+| `npm test` | Run the unit tests with Vitest |
 | `npm run preview` | Serve the production build locally |
 
 ## Layout
