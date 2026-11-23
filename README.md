@@ -8,6 +8,7 @@ Unicorn is a personal running tracker that pulls runs and fitness data from Garm
 
 - **Weekly mileage:** Monday–Sunday weeks over 3M / 6M / 1Y / YTD / All.
 - **Rides:** bike rides are imported too and can be counted toward weekly mileage as run-equivalent miles.
+- **Sauna:** sauna sessions are imported from Garmin and shown under each week's mileage bar (🧖 per session plus total minutes), with a Weekly sauna chart that starts collapsed.
 - **Shoe mileage:** one run can be split across several shoes (e.g. warmup in one, track reps in another).
 - **Fitness trends:** VO2 max, race predictions, resting HR, lactate threshold.
 - **Training load and readiness:** acute/chronic load, ACWR, readiness, HRV, training status.
@@ -121,4 +122,8 @@ Changes that come from the repo owner (Young Re Song) can always be committed an
   - Weekly mileage is running miles only, unless you turn on **Include bikes as run-equivalent** on the Dashboard.
   - A ride's run-equivalent miles are its Garmin training load divided by your average training load per running mile over the last year.
   - A ride with no training load adds nothing.
+- **Sauna:** Garmin has no sauna activity type, so a session is an activity of type `other` named "Sauna" (any letter case). Sauna sessions are listed on the Runs page under the **Sauna** filter.
+  - They never count toward mileage, shoes, records, the run-equivalent conversion or training load.
+  - The weekly mileage chart shows one 🧖 per session under each week's bar, plus that week's sauna minutes. On 1Y / YTD / All the bars are too narrow, so each sauna week gets a dot instead; hover a bar for the numbers.
+  - Sessions synced before sauna support was added (November 2026) were skipped. Run `backfill` once to import them.
 - **Rate limits:** Garmin's endpoints are undocumented. The sync parses responses defensively and stops as soon as it gets a 429 (rate limit).
