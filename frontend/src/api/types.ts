@@ -1,6 +1,6 @@
 export type Category = 'road' | 'treadmill' | 'track' | 'trail'
 export type RideCategory = 'road' | 'indoor' | 'mountain' | 'gravel'
-export type Sport = 'run' | 'ride'
+export type Sport = 'run' | 'ride' | 'sauna'
 export type RangeKey = '3m' | '6m' | '1y' | 'ytd' | 'all'
 
 export interface ShoeSegment {
@@ -83,6 +83,14 @@ export interface Week {
   rolling_avg_total: number
   run_ids: number[]
   ride_ids: number[]
+}
+
+export interface SaunaWeek {
+  week_start: string
+  week_end: string
+  sessions: number
+  minutes: number
+  ids: number[]
 }
 
 export interface DailyMetrics {

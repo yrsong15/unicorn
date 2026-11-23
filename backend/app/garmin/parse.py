@@ -31,6 +31,8 @@ RIDE_CATEGORIES = {
     "gravel_cycling": "gravel",
 }
 
+DEFAULT_NAMES = {"run": "Run", "ride": "Ride", "sauna": "Sauna"}
+
 
 def dig(obj: Any, *path: str | int) -> Any:
     for key in path:
@@ -92,11 +94,20 @@ def sport_and_category(activity: dict) -> tuple[str, str] | None:
         return "run", RUN_CATEGORIES[type_key]
     if type_key in RIDE_CATEGORIES:
         return "ride", RIDE_CATEGORIES[type_key]
+    if is_sauna(activity):
+        return "sauna", "sauna"
     return None
 
 
+def is_sauna(activity: dict) -> bool:
+    """Garmin has no sauna type: sessions come back as type "other" named "Sauna" (any case)."""
+    type_key = _str(dig(activity, "activityType", "typeKey")) or ""
+    name = _str(activity.get("activityName")) or ""
+    return type_key == "other" and name.strip().casefold() == "sauna"
+
+
 def parse_activity(activity: dict) -> dict | None:
-    """Fields for a Run row (a run or a ride), or None for any other activity."""
+    """Fields for a Run row (a run, ride or sauna session), or None for any other activity."""
     if not isinstance(activity, dict):
         return None
     kind = sport_and_category(activity)
@@ -105,14 +116,14 @@ def parse_activity(activity: dict) -> dict | None:
     if kind is None or start_local is None or activity_id is None:
         return None
     sport, category = kind
-    cadence = "averageRunningCadenceInStepsPerMinute" if sport == "run" else "averageBikingCadenceInRevPerMinute"
+    cadence = {"run": "averageRunningCadenceInStepsPerMinute", "ride": "averageBikingCadenceInRevPerMinute"}.get(sport)
     zones = [_num(activity.get(f"hrTimeInZone_{i}")) for i in range(1, 6)]
     return {
         "garmin_activity_id": activity_id,
         "start_local": start_local,
         "start_utc": _dt(activity.get("startTimeGMT")) or start_local,
         "local_date": start_local.date(),
-        "name": (_str(activity.get("activityName")) or ("Run" if sport == "run" else "Ride"))[:200],
+        "name": (_str(activity.get("activityName")) or DEFAULT_NAMES[sport])[:200],
         "type_key": _str(dig(activity, "activityType", "typeKey")),
         "sport": sport,
         "category": category,
@@ -121,7 +132,7 @@ def parse_activity(activity: dict) -> dict | None:
         "moving_s": _num(activity.get("movingDuration")),
         "avg_hr": _num(activity.get("averageHR")),
         "max_hr": _num(activity.get("maxHR")),
-        "avg_cadence": _num(activity.get(cadence)),
+        "avg_cadence": _num(activity.get(cadence)) if cadence else None,
         "elev_gain_m": _num(activity.get("elevationGain")),
         "aerobic_te": _num(activity.get("aerobicTrainingEffect")),
         "anaerobic_te": _num(activity.get("anaerobicTrainingEffect")),

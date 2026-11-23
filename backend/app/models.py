@@ -45,8 +45,8 @@ class Run(SQLModel, table=True):
     local_date: date = Field(index=True)
     name: str = ""
     type_key: str = "running"
-    # Rides share this table so they can count toward weekly load; shoes and records stay run-only.
-    sport: str = Field(default="run", index=True, sa_column_kwargs={"server_default": "run"})  # run | ride
+    # Rides and sauna sessions share this table; shoes, records and mileage stay run-only.
+    sport: str = Field(default="run", index=True, sa_column_kwargs={"server_default": "run"})  # run | ride | sauna
     category: str = "road"  # runs: road | treadmill | track | trail; rides: road | indoor | mountain | gravel
     distance_m: float = 0
     duration_s: float = 0

@@ -53,3 +53,23 @@ def make_shoe(session, name: str = "Shoe", **kwargs) -> Shoe:
 
 def make_ride(session, day: date, miles: float, load: float | None, **kwargs) -> Run:
     return make_run(session, day, miles, sport="ride", load=load, **kwargs)
+
+
+def make_sauna(session, day: date, minutes: float, *, hour: int = 19) -> Run:
+    _next_id[0] += 1
+    start = datetime.combine(day, time(hour))
+    sauna = Run(
+        garmin_activity_id=_next_id[0],
+        start_local=start,
+        start_utc=start,
+        local_date=day,
+        name="Sauna",
+        type_key="other",
+        sport="sauna",
+        category="sauna",
+        distance_m=0,
+        duration_s=minutes * 60,
+    )
+    session.add(sauna)
+    session.commit()
+    return sauna

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 
 import type { RunSummary } from '../api/types'
-import { activityLabel, duration, longDate, mi, paceOrSpeed } from '../lib/format'
+import { activityLabel, duration, longDate, mi, minutes, paceOrSpeed } from '../lib/format'
 import { Badge, Empty } from './ui'
 
 export function ShoeChips({ run }: { run: RunSummary }) {
@@ -30,13 +30,20 @@ export function RunList({ runs, empty = 'No runs here.' }: { runs: RunSummary[];
                 {longDate(r.local_date)} · {activityLabel(r)}
               </div>
             </div>
-            <div className="tabular flex gap-4 text-sm text-ink-2 sm:w-64">
-              <span className="w-16 font-semibold text-ink">{mi(r.miles, 2)} mi</span>
-              <span className="w-16">{duration(r.duration_s)}</span>
-              <span>{paceOrSpeed(r)}</span>
-            </div>
+            {r.sport === 'sauna' ? (
+              <div className="tabular flex gap-4 text-sm text-ink-2 sm:w-64">
+                <span className="w-16 font-semibold text-ink">{minutes(r.duration_s / 60)}</span>
+                <span>{r.avg_hr ? `${Math.round(r.avg_hr)} bpm` : ''}</span>
+              </div>
+            ) : (
+              <div className="tabular flex gap-4 text-sm text-ink-2 sm:w-64">
+                <span className="w-16 font-semibold text-ink">{mi(r.miles, 2)} mi</span>
+                <span className="w-16">{duration(r.duration_s)}</span>
+                <span>{paceOrSpeed(r)}</span>
+              </div>
+            )}
             <div className="min-w-0 flex-1">
-              {r.sport === 'ride' ? <Badge>Ride</Badge> : <ShoeChips run={r} />}
+              {r.sport === 'ride' ? <Badge>Ride</Badge> : r.sport === 'sauna' ? <Badge>Sauna</Badge> : <ShoeChips run={r} />}
             </div>
           </Link>
         </li>

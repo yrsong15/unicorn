@@ -37,7 +37,7 @@ class RunSummaryOut(BaseModel):
     name: str
     start_local: datetime
     local_date: date
-    sport: str  # run | ride
+    sport: str  # run | ride | sauna
     category: str
     miles: float
     duration_s: float

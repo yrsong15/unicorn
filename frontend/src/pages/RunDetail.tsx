@@ -3,7 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import { useRun } from '../api/hooks'
 import { ShoeSplitEditor } from '../components/ShoeSplitEditor'
 import { Card, ErrorNote, Loading, PageHeader, Stat } from '../components/ui'
-import { activityLabel, duration, longDate, mi, mph, pace } from '../lib/format'
+import type { RunDetail as RunDetailData } from '../api/types'
+import { activityLabel, duration, longDate, mi, minutes, mph, pace } from '../lib/format'
 
 const ZONE_COLORS = ['#9fb9d9', '#5e8fc7', '#00539b', '#e89923', '#c84e00']
 
@@ -13,6 +14,7 @@ export default function RunDetail() {
   if (run.isLoading) return <Loading />
   if (run.error || !run.data) return <ErrorNote error={run.error} />
   const r = run.data
+  if (r.sport === 'sauna') return <SaunaDetail r={r} />
   const ride = r.sport === 'ride'
   const zoneTotal = (r.hr_zones_s ?? []).reduce((a, b) => a + b, 0)
   const fastestLap = Math.min(...r.laps.filter((l) => l.miles > 0.2).map((l) => l.pace_s_per_mile ?? Infinity))
@@ -20,15 +22,7 @@ export default function RunDetail() {
   return (
     <>
       <Link to={ride ? '/runs?sport=ride' : '/runs'} className="text-sm text-link">{ride ? '← Rides' : '← Runs'}</Link>
-      <PageHeader
-        title={r.name}
-        sub={`${longDate(r.local_date)} · ${new Date(r.start_local).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })} · ${activityLabel(r)}`}
-        action={
-          <a className="text-sm text-link" href={`https://connect.garmin.com/modern/activity/${r.garmin_activity_id}`} target="_blank" rel="noreferrer">
-            Open in Garmin Connect ↗
-          </a>
-        }
-      />
+      <DetailHeader r={r} />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <Stat label="Distance" value={`${mi(r.miles, 2)} mi`} />
@@ -116,6 +110,35 @@ export default function RunDetail() {
             <dd className="tabular text-right">{r.vo2max ?? '–'}</dd>
           </dl>
         </Card>
+      </div>
+    </>
+  )
+}
+
+function DetailHeader({ r }: { r: RunDetailData }) {
+  return (
+    <PageHeader
+      title={r.name}
+      sub={`${longDate(r.local_date)} · ${new Date(r.start_local).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })} · ${activityLabel(r)}`}
+      action={
+        <a className="text-sm text-link" href={`https://connect.garmin.com/modern/activity/${r.garmin_activity_id}`} target="_blank" rel="noreferrer">
+          Open in Garmin Connect ↗
+        </a>
+      }
+    />
+  )
+}
+
+/** Sauna sessions have no distance, pace, shoes or laps: just time and heart rate. */
+function SaunaDetail({ r }: { r: RunDetailData }) {
+  return (
+    <>
+      <Link to="/runs?sport=sauna" className="text-sm text-link">← Sauna sessions</Link>
+      <DetailHeader r={r} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <Stat label="Time" value={minutes(r.duration_s / 60)} />
+        <Stat label="Avg HR" value={r.avg_hr ? Math.round(r.avg_hr) : '–'} />
+        <Stat label="Max HR" value={r.max_hr ? Math.round(r.max_hr) : '–'} />
       </div>
     </>
   )

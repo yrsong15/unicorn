@@ -11,7 +11,7 @@ from app.services.shoes import SegmentError, SegmentInput, replace_segments
 from app.validation import MAX_ID, MAX_MILES, BodyId, DbId, OptionalDbIdQuery
 
 router = APIRouter(prefix="/runs", tags=["runs"])
-SPORTS = {"run", "ride", "all"}
+SPORTS = {"run", "ride", "sauna", "all"}
 
 
 def _shoes(session: Session) -> dict[int, Shoe]:

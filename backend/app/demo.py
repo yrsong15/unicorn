@@ -149,6 +149,29 @@ def seed(days: int = 460, rng_seed: int = 7) -> None:
                 s.add(Lap(run_id=ride.id, idx=i + 1, distance_m=5 * METERS_PER_MILE, duration_s=5 / mph * 3600,
                           avg_hr=ride.avg_hr, avg_cadence=ride.avg_cadence, elev_gain_m=0))
 
+        # Sauna sessions, mostly in the last half year: a few evenings a week, some weeks none.
+        for offset in range(days + 1):
+            day = start + timedelta(days=offset)
+            if offset / days < 0.5 or day.weekday() not in (0, 3, 6) or rng.random() < 0.45:
+                continue
+            activity_id += 1
+            minutes = rng.uniform(12, 25)
+            start_local = datetime.combine(day, datetime.min.time()) + timedelta(hours=19, minutes=rng.randint(0, 60))
+            s.add(Run(
+                garmin_activity_id=activity_id,
+                start_local=start_local,
+                start_utc=start_local + timedelta(hours=4),
+                local_date=day,
+                name="Sauna",
+                type_key="other",
+                sport="sauna",
+                category="sauna",
+                distance_m=0,
+                duration_s=minutes * 60,
+                avg_hr=105 + rng.uniform(-8, 10),
+                max_hr=125 + rng.uniform(-8, 10),
+            ))
+
         acute = chronic = 300.0
         for offset in range(days + 1):
             day = start + timedelta(days=offset)

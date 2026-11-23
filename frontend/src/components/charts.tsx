@@ -4,8 +4,8 @@ import {
   XAxis, YAxis,
 } from 'recharts'
 
-import type { Week } from '../api/types'
-import { fullDate, mi, monthYear, shortDate, weekRange } from '../lib/format'
+import type { SaunaWeek, Week } from '../api/types'
+import { fullDate, mi, minutes, monthYear, shortDate, weekRange } from '../lib/format'
 
 const axisTick = { fill: 'var(--ink-3)', fontSize: 12 }
 
@@ -42,7 +42,7 @@ export function Legend({ items }: { items: { label: string; color: string; dashe
   )
 }
 
-function tickFormatter(weeks: Week[]) {
+function tickFormatter(weeks: { week_start: string }[]) {
   const long = weeks.length > 60
   return (iso: string) => (long ? monthYear(iso) : shortDate(iso))
 }
@@ -156,6 +156,63 @@ export function WeeklyMileageChart({ weeks, includeBikes = false, selected, onSe
           </ComposedChart>
         </ResponsiveContainer>
       </div>
+    </div>
+  )
+}
+
+export const SAUNA_COLOR = 'var(--series-2)'
+
+/** Sauna minutes per week; the tooltip adds the session count. */
+export function SaunaWeeklyChart({ weeks, selected, onSelect }: {
+  weeks: SaunaWeek[]
+  selected?: string | null
+  onSelect?: (week: SaunaWeek) => void
+}) {
+  const dense = weeks.length > 40
+  const dim = (w: SaunaWeek) => (selected && selected !== w.week_start ? 0.4 : 1)
+  return (
+    <div className="h-48 sm:h-56">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={weeks} margin={{ top: 8, right: 4, bottom: 0, left: -18 }} barCategoryGap={dense ? 1 : '18%'}>
+          <CartesianGrid vertical={false} stroke="var(--grid)" />
+          <XAxis
+            dataKey="week_start"
+            tick={axisTick}
+            tickLine={false}
+            axisLine={{ stroke: 'var(--grid)' }}
+            tickFormatter={tickFormatter(weeks)}
+            minTickGap={24}
+          />
+          <YAxis tick={axisTick} tickLine={false} axisLine={false} allowDecimals={false} unit="m" />
+          <Tooltip
+            cursor={{ fill: 'var(--surface-2)', opacity: 0.6 }}
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null
+              const w = payload[0].payload as SaunaWeek
+              return (
+                <ChartTooltip
+                  title={weekRange(w.week_start, w.week_end)}
+                  rows={[
+                    { label: 'Sessions', value: w.sessions },
+                    { label: 'Total time', value: minutes(w.minutes), color: SAUNA_COLOR },
+                  ]}
+                />
+              )
+            }}
+          />
+          <Bar
+            dataKey="minutes"
+            fill={SAUNA_COLOR}
+            radius={[4, 4, 0, 0]}
+            cursor={onSelect ? 'pointer' : undefined}
+            onClick={(d: unknown) => onSelect?.((d as { payload: SaunaWeek }).payload)}
+          >
+            {weeks.map((w) => (
+              <Cell key={w.week_start} fillOpacity={dim(w)} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
     </div>
   )
 }

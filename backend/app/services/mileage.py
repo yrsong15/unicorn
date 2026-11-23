@@ -88,6 +88,8 @@ def bucket_weeks(runs: list[Run], start: date, end: date, per_mile: float | None
             week.rides += 1
             week.ride_ids.append(run.id)
             continue
+        if run.sport != "run":  # sauna sessions aren't mileage
+            continue
         miles = run.distance_m / METERS_PER_MILE
         week.miles += miles
         week.runs += 1

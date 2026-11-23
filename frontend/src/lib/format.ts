@@ -1,3 +1,5 @@
+import type { Sport } from '../api/types'
+
 export const mi = (miles: number | null | undefined, digits = 1) =>
   miles === null || miles === undefined ? '–' : miles.toFixed(digits)
 
@@ -48,16 +50,27 @@ export const titleCase = (s: string | null | undefined) =>
 export const CATEGORY_LABELS = { road: 'Road', treadmill: 'Treadmill', track: 'Track', trail: 'Trail' } as const
 export const RIDE_CATEGORY_LABELS = { road: 'Road ride', indoor: 'Indoor ride', mountain: 'Mountain bike', gravel: 'Gravel ride' } as const
 
-export function activityLabel(a: { sport: 'run' | 'ride'; category: string }): string {
+export function activityLabel(a: { sport: Sport; category: string }): string {
+  if (a.sport === 'sauna') return 'Sauna'
   const labels: Record<string, string> = a.sport === 'ride' ? RIDE_CATEGORY_LABELS : CATEGORY_LABELS
   return labels[a.category] ?? titleCase(a.category)
 }
 
 export const mph = (speed: number | null | undefined) => (speed ? `${speed.toFixed(1)} mph` : '–')
 
-/** Pace for runs, speed for rides. */
-export const paceOrSpeed = (a: { sport: 'run' | 'ride'; pace_s_per_mile: number | null; speed_mph: number | null }) =>
-  a.sport === 'ride' ? mph(a.speed_mph) : pace(a.pace_s_per_mile)
+/** Pace for runs, speed for rides, nothing for sauna sessions. */
+export const paceOrSpeed = (a: { sport: Sport; pace_s_per_mile: number | null; speed_mph: number | null }) =>
+  a.sport === 'sauna' ? '–' : a.sport === 'ride' ? mph(a.speed_mph) : pace(a.pace_s_per_mile)
+
+/** Whole minutes, e.g. "45 min" or "1 h 05 min". */
+export function minutes(total: number | null | undefined): string {
+  if (total === null || total === undefined) return '–'
+  const m = Math.round(total)
+  const h = Math.floor(m / 60)
+  return h > 0 ? `${h} h ${String(m % 60).padStart(2, '0')} min` : `${m} min`
+}
+
+export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
 /** Read and write a small per-browser preference; storage can be unavailable (private mode). */
 export function loadPref<T extends string>(key: string, fallback: T, allowed: readonly T[]): T {

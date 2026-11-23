@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { activityLabel, duration, mi, pace, paceOrSpeed, titleCase } from './format'
+import { activityLabel, duration, mi, minutes, pace, paceOrSpeed, plural, titleCase } from './format'
 
 describe('duration', () => {
   it('formats minutes and hours', () => {
@@ -43,5 +43,24 @@ describe('labels', () => {
     expect(activityLabel({ sport: 'run', category: 'track' })).toBe('Track')
     expect(activityLabel({ sport: 'ride', category: 'gravel' })).toBe('Gravel ride')
     expect(activityLabel({ sport: 'run', category: 'ultra_trail' })).toBe('Ultra Trail')
+    expect(activityLabel({ sport: 'sauna', category: 'sauna' })).toBe('Sauna')
+  })
+})
+
+describe('sauna formatting', () => {
+  it('formats minutes, with hours past 60', () => {
+    expect(minutes(18.4)).toBe('18 min')
+    expect(minutes(0)).toBe('0 min')
+    expect(minutes(65)).toBe('1 h 05 min')
+    expect(minutes(null)).toBe('–')
+  })
+
+  it('shows no pace for a sauna session', () => {
+    expect(paceOrSpeed({ sport: 'sauna', pace_s_per_mile: null, speed_mph: null })).toBe('–')
+  })
+
+  it('pluralizes counts', () => {
+    expect(plural(1, 'session')).toBe('1 session')
+    expect(plural(3, 'session')).toBe('3 sessions')
   })
 })

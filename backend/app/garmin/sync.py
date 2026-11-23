@@ -183,7 +183,8 @@ def upsert_run(session: Session, garmin: Garmin | None, activity: dict, call: Re
 
     distance_edited = old_distance is not None and abs(old_distance - run.distance_m) > DISTANCE_EDIT_M
     has_laps = not is_new and session.exec(select(Lap.id).where(Lap.run_id == run.id)).first() is not None
-    if garmin and (is_new or not has_laps or distance_edited):
+    # Sauna sessions have no laps worth fetching.
+    if garmin and run.sport != "sauna" and (is_new or not has_laps or distance_edited):
         call = call or Requests()
         laps = parse.parse_laps(call(garmin.get_activity_splits, run.garmin_activity_id))
         # Keep the laps we have if the refetch came back empty or failed.
@@ -211,9 +212,9 @@ def follow_distance_edit(session: Session, run: Run, old_distance: float) -> Non
 
 
 def sync_activities(session: Session, garmin: Garmin, start: date, end: date, call: Requests) -> dict[str, int]:
-    """Upsert runs and rides; returns how many of each were seen."""
+    """Upsert runs, rides and sauna sessions; returns how many of each were seen."""
     activities = call(garmin.get_activities_by_date, start.isoformat(), end.isoformat(), required=True) or []
-    counts = {"run": 0, "ride": 0}
+    counts = {"run": 0, "ride": 0, "sauna": 0}
     latest: datetime | None = None
     for activity in activities if isinstance(activities, list) else []:
         try:
@@ -304,7 +305,7 @@ def run_sync(
     activities_since: date | None = None,
     metrics_since: date | None = None,
 ) -> dict:
-    """Pull new runs, rides and daily metrics. Returns a short summary."""
+    """Pull new runs, rides, sauna sessions and daily metrics. Returns a short summary."""
     lock = SyncLock(session)
     lock.claim()
     state = get_state(session)
@@ -338,14 +339,15 @@ def run_sync(
     except Exception as exc:
         _finish(session, "error", f"Sync failed: {exc}"[:500])
         raise
-    runs, rides = counts["run"], counts["ride"]
+    runs, rides, saunas = counts["run"], counts["ride"], counts["sauna"]
     rides_part = f", {rides} ride{'s' if rides != 1 else ''}" if rides else ""
-    message = f"Synced {runs} run{'s' if runs != 1 else ''}{rides_part} and {days} day{'s' if days != 1 else ''} of metrics"
+    saunas_part = f", {saunas} sauna session{'s' if saunas != 1 else ''}" if saunas else ""
+    message = f"Synced {runs} run{'s' if runs != 1 else ''}{rides_part}{saunas_part} and {days} day{'s' if days != 1 else ''} of metrics"
     if call.failed:
         message += f", but {call.failed} Garmin request{'s' if call.failed != 1 else ''} failed (last: {call.last_error})"
     message = message[:500]
     _finish(session, "partial" if call.failed else "ok", message)
-    return {"runs": runs, "rides": rides, "metric_days": days, "failed_requests": call.failed, "message": message}
+    return {"runs": runs, "rides": rides, "saunas": saunas, "metric_days": days, "failed_requests": call.failed, "message": message}
 
 
 def _finish(session: Session, status: str, message: str) -> None:

@@ -11,9 +11,15 @@ type SportFilter = Sport | 'all'
 const SPORT_OPTIONS: { key: SportFilter; label: string }[] = [
   { key: 'run', label: 'Runs' },
   { key: 'ride', label: 'Rides' },
+  { key: 'sauna', label: 'Sauna' },
   { key: 'all', label: 'All' },
 ]
-const NOUNS = { run: ['run', 'runs'], ride: ['ride', 'rides'], all: ['activity', 'activities'] } as const
+const NOUNS = {
+  run: ['run', 'runs'],
+  ride: ['ride', 'rides'],
+  sauna: ['sauna session', 'sauna sessions'],
+  all: ['activity', 'activities'],
+} as const
 
 export default function Runs() {
   const [params, setParams] = useSearchParams()
@@ -41,7 +47,7 @@ export default function Runs() {
   return (
     <>
       <PageHeader
-        title={sport === 'ride' ? 'Rides' : sport === 'all' ? 'Activities' : 'Runs'}
+        title={{ run: 'Runs', ride: 'Rides', sauna: 'Sauna sessions', all: 'Activities' }[sport]}
         sub={runs.data ? `${total} ${NOUNS[sport][total === 1 ? 0 : 1]}` : undefined}
         action={<Segmented label="Sport" value={sport} onChange={(v) => set('sport', v)} options={SPORT_OPTIONS} />}
       />

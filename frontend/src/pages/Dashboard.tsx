@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { useDashboard, useRuns, useWeekly } from '../api/hooks'
-import type { RangeKey, Week } from '../api/types'
-import { WeeklyMileageChart } from '../components/charts'
+import { useDashboard, useRuns, useSaunaWeekly, useWeekly } from '../api/hooks'
+import type { RangeKey, SaunaWeek, Week } from '../api/types'
+import { SaunaWeeklyChart, WeeklyMileageChart } from '../components/charts'
 import { RunList } from '../components/RunList'
 import { Badge, Card, ErrorNote, Loading, PageHeader, RangePicker, Stat, Switch } from '../components/ui'
-import { loadPref, mi, savePref, shortDate, titleCase } from '../lib/format'
+import { loadPref, mi, minutes, plural, savePref, shortDate, titleCase, weekRange } from '../lib/format'
 
 const BIKES_PREF = 'unicorn.includeBikes'
 
@@ -26,6 +26,71 @@ function WeekMiles({ week, includeBikes }: { week: Week | undefined; includeBike
 
 const countLabel = (w: Week, includeBikes: boolean) =>
   `${w.runs} run${w.runs === 1 ? '' : 's'}${includeBikes && w.rides ? ` · ${w.rides} ride${w.rides === 1 ? '' : 's'}` : ''}`
+
+function SaunaCard() {
+  const [range, setRange] = useState<RangeKey>('3m')
+  const [selected, setSelected] = useState<SaunaWeek | null>(null)
+  const sauna = useSaunaWeekly(range)
+  const sessions = useRuns({ ids: selected?.ids ?? [], sport: 'sauna', limit: 50 }, !!selected?.ids.length)
+  const weeks = sauna.data?.weeks ?? []
+  const [last, current] = weeks.slice(-2)
+  const diff = current && last ? current.minutes - last.minutes : 0
+  const avgSessions = weeks.length ? (sauna.data?.total_sessions ?? 0) / weeks.length : 0
+  const avgMinutes = weeks.length ? (sauna.data?.total_minutes ?? 0) / weeks.length : 0
+
+  return (
+    <Card
+      className="mt-4"
+      title="Weekly sauna"
+      action={<RangePicker value={range} onChange={(r) => { setRange(r); setSelected(null) }} />}
+    >
+      {sauna.error && <ErrorNote error={sauna.error} />}
+      {sauna.isLoading ? (
+        <Loading />
+      ) : (
+        <>
+          {current && (
+            <p className="mb-3 text-sm text-ink-2">
+              <span className="font-medium text-ink">This week:</span> {plural(current.sessions, 'session')} ·{' '}
+              {minutes(current.minutes)}
+              {last && ` (${diff >= 0 ? '+' : '−'}${minutes(Math.abs(diff))} vs last week)`}
+            </p>
+          )}
+          <SaunaWeeklyChart
+            weeks={weeks}
+            selected={selected?.week_start}
+            onSelect={(w) => setSelected((cur) => (cur?.week_start === w.week_start ? null : w))}
+          />
+          <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2 text-xs text-ink-3">
+            <span>
+              Average {avgSessions.toFixed(1)} sessions and {minutes(avgMinutes)} a week over {weeks.length} weeks. Click a
+              bar to see that week's sessions.
+            </span>
+            <Link to="/runs?sport=sauna" className="text-sm text-link">All sauna sessions →</Link>
+          </div>
+          {selected && (
+            <div className="mt-4 border-t border-border pt-3">
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <h3 className="text-sm font-medium text-ink">
+                  {weekRange(selected.week_start, selected.week_end)} · {plural(selected.sessions, 'session')} ·{' '}
+                  {minutes(selected.minutes)}
+                </h3>
+                <button type="button" className="text-sm text-link" onClick={() => setSelected(null)}>
+                  Close
+                </button>
+              </div>
+              {selected.ids.length ? (
+                <RunList runs={sessions.data?.items ?? []} />
+              ) : (
+                <p className="text-sm text-ink-3">No sauna sessions that week.</p>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </Card>
+  )
+}
 
 export default function Dashboard() {
   const [range, setRange] = useState<RangeKey>('3m')
@@ -121,6 +186,8 @@ export default function Dashboard() {
           </>
         )}
       </Card>
+
+      <SaunaCard />
 
       <Card
         className="mt-4"
