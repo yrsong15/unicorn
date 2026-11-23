@@ -6,9 +6,8 @@ from sqlmodel import select
 from app.garmin import parse
 from app.garmin.sync import run_sync, upsert_run
 from app.models import DailyMetrics, Lap, Run, RunShoe
-from app.services.mileage import bucket_weeks
+from app.services.mileage import bucket_weeks, weekly_series
 from app.services.records import compute_records
-from app.services.sauna import bucket_sauna_weeks, sauna_weeks
 from app.services.shoes import apply_default_shoe
 from tests.factories import app_today, make_ride, make_run, make_sauna, make_shoe
 from tests.test_sync import FakeGarmin, _fast
@@ -74,41 +73,41 @@ def test_saunas_add_nothing_to_mileage(session):
     assert activities[2].id not in week.run_ids + week.ride_ids
 
 
-def test_sauna_weeks_are_zero_filled_monday_to_sunday(session):
+def test_weekly_buckets_count_sauna_sessions_and_time(session):
     saunas = [
         make_sauna(session, date(2026, 10, 4), 30),  # Sunday: week of 2026-09-28
         make_sauna(session, date(2026, 10, 12), 15),  # Monday
         make_sauna(session, date(2026, 10, 17), 20.5),  # Saturday, same week
         make_run(session, date(2026, 10, 13), 5),  # not a sauna
     ]
-    weeks = bucket_sauna_weeks(saunas, date(2026, 9, 28), TODAY)
+    weeks = bucket_weeks(saunas, date(2026, 9, 28), TODAY)
     assert [w.start for w in weeks] == [date(2026, 9, 28), date(2026, 10, 5), date(2026, 10, 12)]
-    assert [w.sessions for w in weeks] == [1, 0, 2]
-    assert [w.seconds / 60 for w in weeks] == [pytest.approx(30), 0, pytest.approx(35.5)]
-    assert weeks[2].ids == [saunas[1].id, saunas[2].id]
+    assert [w.saunas for w in weeks] == [1, 0, 2]
+    assert [w.sauna_seconds / 60 for w in weeks] == [pytest.approx(30), 0, pytest.approx(35.5)]
+    assert weeks[2].sauna_ids == [saunas[1].id, saunas[2].id]
+    assert weeks[2].runs == 1 and weeks[2].miles == pytest.approx(5)
 
 
-def test_sauna_weeks_range(session):
+def test_weekly_series_includes_saunas(session):
     make_sauna(session, TODAY - timedelta(weeks=20), 10)  # outside 3m
     make_sauna(session, TODAY, 10)
-    weeks = sauna_weeks(session, "3m", TODAY)
-    assert len(weeks) == 13 and sum(w.sessions for w in weeks) == 1
-    assert sum(w.sessions for w in sauna_weeks(session, "all", TODAY)) == 2
+    make_run(session, TODAY - timedelta(weeks=30), 3)
+    weeks, _ = weekly_series(session, "3m", TODAY)
+    assert len(weeks) == 13 and sum(w.saunas for w in weeks) == 1
+    weeks, _ = weekly_series(session, "all", TODAY)
+    assert sum(w.saunas for w in weeks) == 2
 
 
-def test_sauna_summary_api(logged_in, session):
+def test_weekly_api_reports_saunas(logged_in, session):
     today = app_today()
     make_sauna(session, today, 18)
     make_sauna(session, today, 12)
     make_run(session, today, 5)
-    body = logged_in.get("/api/summary/sauna?range=3m").json()
-    assert body["total_sessions"] == 2 and body["total_minutes"] == 30
-    this = body["weeks"][-1]
-    assert this["sessions"] == 2 and this["minutes"] == 30 and len(this["ids"]) == 2
-    assert set(this) == {"week_start", "week_end", "sessions", "minutes", "ids"}
-    assert logged_in.get("/api/summary/sauna?range=5y").status_code == 422
-    # The mileage summaries don't see the saunas.
-    assert logged_in.get("/api/summary/dashboard").json()["this_week"]["runs"] == 1
+    this = logged_in.get("/api/summary/weekly?range=3m").json()["weeks"][-1]
+    assert this["saunas"] == 2 and this["sauna_minutes"] == 30 and len(this["sauna_ids"]) == 2
+    assert this["runs"] == 1 and this["run_miles"] == 5
+    dash = logged_in.get("/api/summary/dashboard").json()["this_week"]
+    assert dash["runs"] == 1 and dash["saunas"] == 2
 
 
 def test_run_list_filters_saunas(logged_in, session):

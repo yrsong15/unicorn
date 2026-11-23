@@ -83,14 +83,10 @@ export interface Week {
   rolling_avg_total: number
   run_ids: number[]
   ride_ids: number[]
-}
-
-export interface SaunaWeek {
-  week_start: string
-  week_end: string
-  sessions: number
-  minutes: number
-  ids: number[]
+  /** Sauna sessions that week; they never add miles. */
+  saunas: number
+  sauna_minutes: number
+  sauna_ids: number[]
 }
 
 export interface DailyMetrics {

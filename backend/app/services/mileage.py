@@ -2,7 +2,8 @@
 
 Rides count as run-equivalent miles by training load: a ride's Garmin training
 load divided by the average load per run mile over the trailing year. Rides
-without a training load add nothing.
+without a training load add nothing. Sauna sessions are counted per week (sessions
+and time) but never add miles.
 """
 
 from dataclasses import dataclass, field
@@ -33,6 +34,9 @@ class Week:
     rides: int = 0
     rolling_avg_total: float = 0.0
     ride_ids: list[int] = field(default_factory=list)
+    saunas: int = 0
+    sauna_seconds: float = 0.0
+    sauna_ids: list[int] = field(default_factory=list)
 
     @property
     def total_miles(self) -> float:
@@ -88,7 +92,12 @@ def bucket_weeks(runs: list[Run], start: date, end: date, per_mile: float | None
             week.rides += 1
             week.ride_ids.append(run.id)
             continue
-        if run.sport != "run":  # sauna sessions aren't mileage
+        if run.sport == "sauna":  # counted, but never mileage
+            week.saunas += 1
+            week.sauna_seconds += run.duration_s or 0.0
+            week.sauna_ids.append(run.id)
+            continue
+        if run.sport != "run":
             continue
         miles = run.distance_m / METERS_PER_MILE
         week.miles += miles

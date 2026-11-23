@@ -1,10 +1,10 @@
-import type { ReactNode } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import {
   Bar, BarChart, CartesianGrid, Cell, ComposedChart, Line, LineChart, Rectangle, ReferenceArea, ResponsiveContainer, Tooltip,
   XAxis, YAxis,
 } from 'recharts'
 
-import type { SaunaWeek, Week } from '../api/types'
+import type { Week } from '../api/types'
 import { fullDate, mi, minutes, monthYear, shortDate, weekRange } from '../lib/format'
 
 const axisTick = { fill: 'var(--ink-3)', fontSize: 12 }
@@ -49,6 +49,88 @@ function tickFormatter(weeks: { week_start: string }[]) {
 
 export const RUN_COLOR = 'var(--series-1)'
 export const BIKE_COLOR = 'var(--series-3)'
+export const SAUNA_COLOR = 'var(--series-4)'
+
+// The plot area starts after the Y axis (60px) plus the chart's left margin (-18px).
+const PLOT_LEFT = 42
+const PLOT_RIGHT = 4
+const Y_AXIS_WIDTH = PLOT_LEFT + 18
+
+/** The sauna emoji (person in steamy room). */
+export function SaunaIcon({ className = '' }: { className?: string }) {
+  return (
+    <span className={`leading-none ${className}`} aria-hidden>
+      🧖
+    </span>
+  )
+}
+
+function useWidth<T extends HTMLElement>() {
+  const ref = useRef<T>(null)
+  const [width, setWidth] = useState(0)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+  return [ref, width] as const
+}
+
+const saunaSummary = (w: Week) =>
+  `${w.saunas} sauna session${w.saunas === 1 ? '' : 's'} · ${minutes(w.sauna_minutes)}`
+
+/**
+ * One column per week, lined up under the mileage bars: a sauna icon per session and
+ * the week's total sauna minutes. When the bars are too narrow, a single dot marks
+ * weeks with sauna and the tooltip carries the numbers.
+ */
+function SaunaRow({ weeks, dim, onSelect }: { weeks: Week[]; dim: (w: Week) => number; onSelect?: (w: Week) => void }) {
+  const [ref, width] = useWidth<HTMLDivElement>()
+  // `width` is the content box, which already excludes the plot-area padding.
+  const band = weeks.length ? width / weeks.length : 0
+  const roomy = band >= 18
+  return (
+    <div ref={ref} className="flex" style={{ paddingLeft: PLOT_LEFT, paddingRight: PLOT_RIGHT }}>
+      {weeks.map((w) => {
+        const label = w.saunas ? `Week of ${shortDate(w.week_start)}: ${saunaSummary(w)}` : undefined
+        return (
+          <button
+            key={w.week_start}
+            type="button"
+            tabIndex={w.saunas ? 0 : -1}
+            aria-label={label}
+            title={label}
+            disabled={!onSelect || !w.saunas}
+            onClick={() => onSelect?.(w)}
+            className="flex min-w-0 flex-1 flex-col items-center pt-1 disabled:cursor-default"
+            style={{ color: SAUNA_COLOR, opacity: dim(w) }}
+          >
+            {w.saunas > 0 &&
+              (roomy ? (
+                <>
+                  <span className="flex flex-col items-center gap-0.5">
+                    {Array.from({ length: w.saunas }, (_, i) => (
+                      <SaunaIcon key={i} className={band >= 30 ? 'text-base' : 'text-[11px]'} />
+                    ))}
+                  </span>
+                  <span
+                    className={`tabular mt-1 whitespace-nowrap font-medium leading-none ${band >= 30 ? 'text-xs' : 'text-[9px] tracking-tight'}`}
+                  >
+                    {Math.round(w.sauna_minutes)}
+                    {band >= 30 && 'm'}
+                  </span>
+                </>
+              ) : (
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: SAUNA_COLOR }} />
+              ))}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
 export function WeeklyMileageChart({ weeks, includeBikes = false, selected, onSelect }: {
   weeks: Week[]
@@ -61,7 +143,7 @@ export function WeeklyMileageChart({ weeks, includeBikes = false, selected, onSe
   const dim = (w: Week) => (selected && selected !== w.week_start ? 0.4 : 1)
   return (
     <div>
-      <div className="mb-2">
+      <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1">
         <Legend
           items={[
             { label: includeBikes ? 'Run miles' : 'Weekly miles', color: RUN_COLOR },
@@ -69,6 +151,12 @@ export function WeeklyMileageChart({ weeks, includeBikes = false, selected, onSe
             { label: includeBikes ? '4-week average (incl. bike)' : '4-week average', color: 'var(--series-2)', dashed: true },
           ]}
         />
+        {weeks.some((w) => w.saunas > 0) && (
+          <span className="inline-flex items-center gap-1.5 text-xs text-ink-2">
+            <SaunaIcon className="text-sm" />
+            Sauna session (minutes per week)
+          </span>
+        )}
       </div>
       <div className="h-64 sm:h-72">
         <ResponsiveContainer width="100%" height="100%">
@@ -82,7 +170,7 @@ export function WeeklyMileageChart({ weeks, includeBikes = false, selected, onSe
               tickFormatter={tickFormatter(weeks)}
               minTickGap={24}
             />
-            <YAxis tick={axisTick} tickLine={false} axisLine={false} allowDecimals={false} />
+            <YAxis tick={axisTick} tickLine={false} axisLine={false} allowDecimals={false} width={Y_AXIS_WIDTH} />
             <Tooltip
               cursor={{ fill: 'var(--surface-2)', opacity: 0.6 }}
               content={({ active, payload }) => {
@@ -104,7 +192,11 @@ export function WeeklyMileageChart({ weeks, includeBikes = false, selected, onSe
                 return (
                   <ChartTooltip
                     title={weekRange(w.week_start, w.week_end)}
-                    rows={[...rows, { label: 'Longest', value: `${mi(w.longest_miles)} mi` }]}
+                    rows={[
+                      ...rows,
+                      { label: 'Longest', value: `${mi(w.longest_miles)} mi` },
+                      ...(w.saunas ? [{ label: 'Sauna', value: `${w.saunas} · ${minutes(w.sauna_minutes)}`, color: SAUNA_COLOR }] : []),
+                    ]}
                   />
                 )
               }}
@@ -156,20 +248,19 @@ export function WeeklyMileageChart({ weeks, includeBikes = false, selected, onSe
           </ComposedChart>
         </ResponsiveContainer>
       </div>
+      {weeks.some((w) => w.saunas > 0) && <SaunaRow weeks={weeks} dim={dim} onSelect={onSelect} />}
     </div>
   )
 }
 
-export const SAUNA_COLOR = 'var(--series-2)'
-
 /** Sauna minutes per week; the tooltip adds the session count. */
 export function SaunaWeeklyChart({ weeks, selected, onSelect }: {
-  weeks: SaunaWeek[]
+  weeks: Week[]
   selected?: string | null
-  onSelect?: (week: SaunaWeek) => void
+  onSelect?: (week: Week) => void
 }) {
   const dense = weeks.length > 40
-  const dim = (w: SaunaWeek) => (selected && selected !== w.week_start ? 0.4 : 1)
+  const dim = (w: Week) => (selected && selected !== w.week_start ? 0.4 : 1)
   return (
     <div className="h-48 sm:h-56">
       <ResponsiveContainer width="100%" height="100%">
@@ -188,24 +279,24 @@ export function SaunaWeeklyChart({ weeks, selected, onSelect }: {
             cursor={{ fill: 'var(--surface-2)', opacity: 0.6 }}
             content={({ active, payload }) => {
               if (!active || !payload?.length) return null
-              const w = payload[0].payload as SaunaWeek
+              const w = payload[0].payload as Week
               return (
                 <ChartTooltip
                   title={weekRange(w.week_start, w.week_end)}
                   rows={[
-                    { label: 'Sessions', value: w.sessions },
-                    { label: 'Total time', value: minutes(w.minutes), color: SAUNA_COLOR },
+                    { label: 'Sessions', value: w.saunas },
+                    { label: 'Total time', value: minutes(w.sauna_minutes), color: SAUNA_COLOR },
                   ]}
                 />
               )
             }}
           />
           <Bar
-            dataKey="minutes"
+            dataKey="sauna_minutes"
             fill={SAUNA_COLOR}
             radius={[4, 4, 0, 0]}
             cursor={onSelect ? 'pointer' : undefined}
-            onClick={(d: unknown) => onSelect?.((d as { payload: SaunaWeek }).payload)}
+            onClick={(d: unknown) => onSelect?.((d as { payload: Week }).payload)}
           >
             {weeks.map((w) => (
               <Cell key={w.week_start} fillOpacity={dim(w)} />

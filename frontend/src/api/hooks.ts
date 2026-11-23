@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, patch, post, put } from './client'
 import type {
-  Dashboard, FitnessKey, MetricsResponse, RangeKey, Records, RunDetail, RunSummary, SaunaWeek, Shoe, Sport, SyncStatus,
+  Dashboard, FitnessKey, MetricsResponse, RangeKey, Records, RunDetail, RunSummary, Shoe, Sport, SyncStatus,
   TrainingResponse, Week,
 } from './types'
 
@@ -25,14 +25,6 @@ export const useWeekly = (range: RangeKey) =>
   useQuery({
     queryKey: ['weekly', range],
     queryFn: () => api<{ weeks: Week[]; load_per_run_mile: number | null }>(`/summary/weekly?range=${range}`),
-    placeholderData: (prev) => prev,
-  })
-
-export const useSaunaWeekly = (range: RangeKey) =>
-  useQuery({
-    queryKey: ['sauna', range],
-    queryFn: () =>
-      api<{ weeks: SaunaWeek[]; total_sessions: number; total_minutes: number }>(`/summary/sauna?range=${range}`),
     placeholderData: (prev) => prev,
   })
 

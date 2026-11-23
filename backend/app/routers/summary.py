@@ -7,7 +7,6 @@ from app.clock import local_today
 from app.db import get_session
 from app.models import DailyMetrics, Run, Shoe
 from app.services.mileage import bucket_weeks, trailing_load_per_run_mile, weekly_series, week_start
-from app.services.sauna import sauna_weeks
 from app.services.shoes import shoes_out
 
 router = APIRouter(prefix="/summary", tags=["summary"])
@@ -27,6 +26,9 @@ def _week_dict(w) -> dict:
         "rolling_avg_total": round(w.rolling_avg_total, 2),
         "run_ids": w.run_ids,
         "ride_ids": w.ride_ids,
+        "saunas": w.saunas,
+        "sauna_minutes": round(w.sauna_seconds / 60, 1),
+        "sauna_ids": w.sauna_ids,
     }
 
 
@@ -41,30 +43,6 @@ def weekly(range: str = "3m", session: Session = Depends(get_session)):  # noqa:
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     return {"range": range, "load_per_run_mile": _factor(per_mile), "weeks": [_week_dict(w) for w in weeks]}
-
-
-def _sauna_week_dict(w) -> dict:
-    return {
-        "week_start": w.start,
-        "week_end": w.start + timedelta(days=6),
-        "sessions": w.sessions,
-        "minutes": round(w.seconds / 60, 1),
-        "ids": w.ids,
-    }
-
-
-@router.get("/sauna")
-def sauna(range: str = "3m", session: Session = Depends(get_session)):  # noqa: A002
-    try:
-        weeks = sauna_weeks(session, range, local_today(session))
-    except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
-    return {
-        "range": range,
-        "weeks": [_sauna_week_dict(w) for w in weeks],
-        "total_sessions": sum(w.sessions for w in weeks),
-        "total_minutes": round(sum(w.seconds for w in weeks) / 60, 1),
-    }
 
 
 @router.get("/dashboard")
